@@ -14,8 +14,7 @@ jobs:
 
     runs-on: ubuntu-latest
     env:
-      name: Damian 
-
+      name: Damian J 
     steps:
     - name: Run a one-line script
       run: echo Hello $name!
