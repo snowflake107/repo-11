@@ -28,10 +28,10 @@ jobs:
       lang: en
       units: aus
       exclude: 'minutely,hourly,daily,alerts,flags'
-      open_weather_map_secret: ${{ secrets.open_weather_map }}
+      dark_sky_secret: ${{ secrets.dark_sky }}
     steps: 
       - name: Current Weather
-        run: curl -s --url https://api.openweathermap.org/forecast/open_weather_map_secret/$location?lang=$lang&units=$units&exclude=$exclude   
+        run: curl -s --url https://api.darksky.net/forecast/dark_sky_secret/$location?lang=$lang&units=$units&exclude=$exclude   
   dump:
     runs-on: ubuntu-latest
     steps:
