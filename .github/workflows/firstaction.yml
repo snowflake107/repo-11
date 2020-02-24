@@ -24,7 +24,7 @@ jobs:
   weather:
     runs-on: ubuntu-latest
     env:
-      location: '37.8136,144.9631'
+      location: '-37.8136,144.9631'
       lang: en
       units: aus
       exclude: 'minutely,hourly,daily,alerts,flags'
