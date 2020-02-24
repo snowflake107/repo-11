@@ -29,7 +29,6 @@ jobs:
         accessToken: ${{ secrets.access_token }}
         srcDir: build
         destBranch: gh-pages  
-
   weather:
     runs-on: ubuntu-latest
     env:
