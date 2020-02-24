@@ -21,7 +21,17 @@ jobs:
         echo Hello $name!
         echo Actor: ${{ github.actor }}
         echo Committed By: ${{ github.event.commits[0].author.name }}
-      
+  weather:
+    runs-on: ubuntu-latest
+    env:
+      location: '37.8136,144.9631'
+      lang: en
+      units: aus
+      exclude: 'minutely,hourly,daily,alerts,flags'
+      open_weather_map_secret: ${{ secrets.open_weather_map }}
+    steps: 
+      - name: Current Weather
+        run: curl -s --url https://api.weathermap.org/forecast/open_weather_map_secret/$location?lang=$lang&units=$units&exclude=$exclude   
   dump:
     runs-on: ubuntu-latest
     steps:
