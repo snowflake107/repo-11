@@ -31,7 +31,7 @@ jobs:
       open_weather_map_secret: ${{ secrets.open_weather_map }}
     steps: 
       - name: Current Weather
-        run: curl -s --url https://api.openweathermap.org/forecast/open_weather_map_secret/$location?lang=$lang&units=$units&exclude=$exclude   
+        run: curl -s --url https://openweathermap.org/api/forecast/open_weather_map_secret/$location?lang=$lang&units=$units&exclude=$exclude   
   dump:
     runs-on: ubuntu-latest
     steps:
