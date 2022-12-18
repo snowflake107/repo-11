@@ -20,10 +20,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-@Disabled
 public class ServiceInternalProcessingTimeEnricherTest extends AbstractAttributeEnricherTest {
 
-  private final Enricher testCandidate = new ServiceInternalProcessingTimeEnricher();
+  private final Enricher testCandidate = new ApiNodeInternalDurationEnricher();
   private StructuredTrace trace;
 
   @BeforeEach

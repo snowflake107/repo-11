@@ -39,7 +39,7 @@ public class SpanNormalizer extends KafkaStreamsApp {
       Map<String, KStream<?, ?>> inputStreams) {
 
     Config jobConfig = getJobConfig(streamsProperties);
-    String inputTopic = jobConfig.getString(INPUT_TOPIC_CONFIG_KEY);
+    String inputTmopic = jobConfig.getString(INPUT_TOPIC_CONFIG_KEY);
     String outputTopic = jobConfig.getString(OUTPUT_TOPIC_CONFIG_KEY);
     String outputTopicRawLogs = jobConfig.getString(OUTPUT_TOPIC_RAW_LOGS_CONFIG_KEY);
 
