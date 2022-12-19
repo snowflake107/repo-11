@@ -48,13 +48,15 @@ public class ServiceInternalProcessingTimeEnricherTest extends AbstractAttribute
     // for events parts of api_node 0, there should 12 exit calls
     // for events parts of api_node 1, there should be 13 exit calls
     // for events parts of api_node 2, there should be 1 exit calls
-    // verify exit call count per service per api_trace
-    // this trace has 4 services
-    // frontend service has 1 api_entry span and that api_node has 12 exit calls [drive: 1,
+    // this trace has 4 services: [frontend, driver, customer, route]
+    // frontend service has 1 api_entry span and that api_node has 12 exit calls [driver: 1,
     // customer: 1, route: 10]
     // setup
     ApiTraceGraph apiTraceGraph = ApiTraceGraphBuilder.buildGraph(trace);
     var apiNodes = apiTraceGraph.getApiNodeList();
+    System.out.println(apiNodes.get(0).getEntryApiBoundaryEvent().get().getStartTimeMillis() + ", " + apiNodes.get(0).getEntryApiBoundaryEvent().get().getEndTimeMillis());
+    apiNodes.get(0).getExitApiBoundaryEvents()
+        .forEach(a -> System.out.println(a.getEventName() + ", " + a.getStartTimeMillis() + ", " + a.getEndTimeMillis()));
     // Assert preconditions
     Assertions.assertEquals(13, apiNodes.size());
     apiNodes.forEach(
