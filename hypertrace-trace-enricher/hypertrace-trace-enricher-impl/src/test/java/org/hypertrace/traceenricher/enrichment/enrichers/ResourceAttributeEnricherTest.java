@@ -112,6 +112,8 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
         "worker-generic", event2.getAttributes().getAttributeMap().get("node.name").getValue());
     assertEquals(
         "worker-generic", event2.getAttributes().getAttributeMap().get("node.selector").getValue());
+    assertEquals("test1-baseline-56f5d554c-5swkj", event2.getAttributes().getAttributeMap().get("pod.name").getValue());
+    assertEquals("baseline", event2.getAttributes().getAttributeMap().get("deployment").getValue());
 
     Event event3 =
         Event.newBuilder()
@@ -122,6 +124,8 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
     event3.setResourceIndex(2);
     resourceAttributeEnricher.enrichEvent(structuredTrace, event3);
     assertEquals("", event3.getAttributes().getAttributeMap().get("node.selector").getValue());
+    assertEquals("test1-worker-56f5d554c-5swkj", event3.getAttributes().getAttributeMap().get("pod.name").getValue());
+    assertEquals("worker", event3.getAttributes().getAttributeMap().get("deployment").getValue());
 
     Event event4 =
         Event.newBuilder()
@@ -159,6 +163,7 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
                 AttributeValue.newBuilder()
                     .setValue("node-role.kubernetes.io/worker-generic/")
                     .build());
+            put("host.name", AttributeValue.newBuilder().setValue("test1-worker-56f5d554c-5swkj").build());
           }
         };
     return Resource.newBuilder()
@@ -179,7 +184,7 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
             put(
                 "opencensus.exporterversion",
                 AttributeValue.newBuilder().setValue("Jaeger-Go-2.23.1").build());
-            put("host.name", AttributeValue.newBuilder().setValue("test1-56f5d554c-5swkj").build());
+            put("host.name", AttributeValue.newBuilder().setValue("test1-baseline-56f5d554c-5swkj").build());
             put("ip", AttributeValue.newBuilder().setValue("10.21.18.1712").build());
             put("client-uuid", AttributeValue.newBuilder().setValue("53a112a715bdf86").build());
             put("node.name", AttributeValue.newBuilder().setValue("worker-generic").build());
