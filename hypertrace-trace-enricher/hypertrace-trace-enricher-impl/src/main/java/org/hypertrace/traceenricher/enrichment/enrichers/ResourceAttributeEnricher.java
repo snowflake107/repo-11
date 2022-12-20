@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import org.hypertrace.core.datamodel.AttributeValue;
 import org.hypertrace.core.datamodel.Event;
 import org.hypertrace.core.datamodel.StructuredTrace;
+import org.hypertrace.core.datamodel.shared.trace.AttributeValueCreator;
 import org.hypertrace.traceenricher.enrichedspan.constants.EnrichedSpanConstants;
 import org.hypertrace.traceenricher.enrichedspan.constants.v1.Backend;
 import org.hypertrace.traceenricher.enrichedspan.constants.v1.Deployment;
@@ -73,17 +74,16 @@ public class ResourceAttributeEnricher extends AbstractTraceEnricher {
                     }));
 
         // Add deployment attribute if pod name is available
-        if (resourceAttributeKey.equals(POD_NAME_KEY)) {
-          resourceAttributeMaybe.ifPresent(
-                  attributeValue ->
-                          attributeMap.computeIfAbsent(
-                                  DEPLOYMENT_KEY,
-                                  key -> {
-                                    attributeValue.setValue(
-                                            getDeploymentType(attributeValue.getValue()));
-                                    return attributeValue;
-                                  }));
-        }
+          if (resourceAttributeKey.equals(POD_NAME_KEY)) {
+              resourceAttributeMaybe.ifPresent(
+                      attributeValue ->
+                              attributeMap.computeIfAbsent(
+                                      DEPLOYMENT_KEY,
+                                      key -> {
+                                          return AttributeValueCreator
+                                                  .create(getDeploymentType(attributeValue.getValue()));
+                                      }));
+          }
       }
     } catch (Exception e) {
       LOGGER.error(
@@ -100,7 +100,6 @@ public class ResourceAttributeEnricher extends AbstractTraceEnricher {
   }
 
   private String getDeploymentType(String hostName) {
-      hostName = EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_CANARY);
       if (hostName.contains(EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_CANARY))) {
         return EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_CANARY);
       } else if (hostName.contains(EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_BASELINE))) {
