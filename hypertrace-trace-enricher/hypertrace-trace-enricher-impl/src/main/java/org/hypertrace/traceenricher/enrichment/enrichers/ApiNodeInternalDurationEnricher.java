@@ -26,72 +26,70 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
 
     for (ApiNode<Event> apiNode : apiNodes) {
       Optional<Event> entryEvent = apiNode.getEntryApiBoundaryEvent();
-      List<OutboundEdge> outboundEdges = apiNode.getExitApiBoundaryEvents()
-          .stream()
-          .filter(
-              event -> {
-                Map<String, AttributeValue> enrichedAttributes =
-                    event.getEnrichedAttributes().getAttributeMap();
-                return enrichedAttributes.containsKey("BACKEND_PROTOCOL")
-                    && enrichedAttributes.get("BACKEND_PROTOCOL").getValue().contains("HTTP");
-              })
-          .map(event -> OutboundEdge.from(event.getStartTimeMillis(), event.getEndTimeMillis()))
-          .collect(Collectors.toList());
-      apiTraceGraph.getOutboundEdgesForApiNode(apiNode)
-          .stream()
+      List<OutboundEdge> outboundEdges =
+          apiNode.getExitApiBoundaryEvents().stream()
+              .filter(
+                  event -> {
+                    Map<String, AttributeValue> enrichedAttributes =
+                        event.getEnrichedAttributes().getAttributeMap();
+                    return enrichedAttributes.containsKey("BACKEND_PROTOCOL")
+                        && enrichedAttributes.get("BACKEND_PROTOCOL").getValue().contains("HTTP");
+                  })
+              .map(event -> OutboundEdge.from(event.getStartTimeMillis(), event.getEndTimeMillis()))
+              .collect(Collectors.toList());
+      apiTraceGraph.getOutboundEdgesForApiNode(apiNode).stream()
           .map(edge -> OutboundEdge.from(edge.getStartTimeMillis(), edge.getEndTimeMillis()))
           .forEach(outboundEdges::add);
       outboundEdges.sort((o1, o2) -> (int) (o1.startTimeMillis - o2.startTimeMillis));
-      //todo: Consider only those EXIT events that are CHILD_OF
-      //todo: Filter for HTTP backends
+      // todo: Consider only those EXIT events that are CHILD_OF
+      // todo: Filter for HTTP backends
       var entryApiBoundaryEventDuration =
           entryEvent.get().getEndTimeMillis() - entryEvent.get().getStartTimeMillis();
       var totalWaitTime = calculateTotalWaitTime(outboundEdges);
-      entryEvent.get()
+      entryEvent
+          .get()
           .getAttributes()
           .getAttributeMap()
           .put(
               EnrichedSpanConstants.INTERNAL_SVC_LATENCY,
               AttributeValueCreator.create(
-                  String.valueOf(
-                      entryApiBoundaryEventDuration
-                          - totalWaitTime)));
+                  String.valueOf(entryApiBoundaryEventDuration - totalWaitTime)));
       // also put into metric map
-      entryEvent.get()
+      entryEvent
+          .get()
           .getMetrics()
           .getMetricMap()
           .put(
               EnrichedSpanConstants.INTERNAL_SVC_LATENCY,
               fastNewBuilder(MetricValue.Builder.class)
-                  .setValue(
-                      (double) (entryApiBoundaryEventDuration - totalWaitTime))
+                  .setValue((double) (entryApiBoundaryEventDuration - totalWaitTime))
                   .build());
-
     }
   }
 
   private long calculateTotalWaitTime(List<OutboundEdge> outboundEdges) {
-    OutboundEdge prevEdge = null;
-    long totalDuration = 0, startTime = outboundEdges.get(0).getStartTimeMillis(), endTime = outboundEdges.get(0).getEndTimeMillis();
-    for(int i = 0; i < outboundEdges.size(); i++) {
-      var currEdge = OutboundEdge.from(startTime, endTime);
+    long totalWait = 0;
+    long startTime = outboundEdges.get(0).getStartTimeMillis();
+    long endTime = outboundEdges.get(0).getEndTimeMillis();
+    for (int i = 0; i < outboundEdges.size(); i++) {
+      var virtualCurrEdge = OutboundEdge.from(startTime, endTime);
       var lookaheadEdge = outboundEdges.get(i + 1);
-      if(areSequential(currEdge, lookaheadEdge)) {
-        totalDuration += (endTime - startTime);
+      if (areSequential(virtualCurrEdge, lookaheadEdge)) {
+        totalWait += virtualCurrEdge.getDuration();
         startTime = lookaheadEdge.getStartTimeMillis();
         endTime = lookaheadEdge.getEndTimeMillis();
       } else {
-        startTime = Math.min(startTime, Math.min(currEdge.getStartTimeMillis(), lookaheadEdge.getStartTimeMillis()));
-        endTime = Math.max(endTime, Math.max(currEdge.getEndTimeMillis(), lookaheadEdge.getStartTimeMillis()));
+        startTime = Math.max(virtualCurrEdge.getStartTimeMillis(), lookaheadEdge.getStartTimeMillis());
+        endTime = Math.max(virtualCurrEdge.getEndTimeMillis(), lookaheadEdge.getEndTimeMillis());
       }
-      prevEdge = currEdge;
     }
+    totalWait += (endTime - startTime);
+    return totalWait;
   }
 
   private boolean areSequential(OutboundEdge currEdge, OutboundEdge lookaheadEdge) {
-    return false;
+    return lookaheadEdge.getStartTimeMillis() >= currEdge.getEndTimeMillis();
   }
-
 
   private static class OutboundEdge {
 
@@ -120,7 +118,5 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
     public long getDuration() {
       return duration;
     }
-
   }
-
 }
