@@ -45,6 +45,9 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
       // todo: Filter for HTTP backends
       var entryApiBoundaryEventDuration =
           entryEvent.get().getEndTimeMillis() - entryEvent.get().getStartTimeMillis();
+      if (outboundEdges.size() == 0) {
+        return;
+      }
       var totalWaitTime = calculateTotalWaitTime(outboundEdges);
       entryEvent
           .get()
@@ -71,7 +74,7 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
     long totalWait = 0;
     long startTime = outboundEdges.get(0).getStartTimeMillis();
     long endTime = outboundEdges.get(0).getEndTimeMillis();
-    for (int i = 0; i < outboundEdges.size(); i++) {
+    for (int i = 0; i < outboundEdges.size() - 1; i++) {
       var virtualCurrEdge = OutboundEdge.from(startTime, endTime);
       var lookaheadEdge = outboundEdges.get(i + 1);
       if (areSequential(virtualCurrEdge, lookaheadEdge)) {
@@ -79,7 +82,7 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
         startTime = lookaheadEdge.getStartTimeMillis();
         endTime = lookaheadEdge.getEndTimeMillis();
       } else {
-        startTime = Math.max(virtualCurrEdge.getStartTimeMillis(), lookaheadEdge.getStartTimeMillis());
+        startTime = Math.min(virtualCurrEdge.getStartTimeMillis(), lookaheadEdge.getStartTimeMillis());
         endTime = Math.max(virtualCurrEdge.getEndTimeMillis(), lookaheadEdge.getEndTimeMillis());
       }
     }

@@ -121,6 +121,7 @@ public class ServiceInternalProcessingTimeEnricherTest extends AbstractAttribute
 //    1613406996960, 1613406997014
 //    1613406996980, 1613406997033
     //total wait time for frontend = (1613406996653 - 1613406996355) + (1613406996836 - 1613406996653) + (1613406997033 - 1613406996836) = 678ms
+    testCandidate.enrichTrace(trace);
     var entryEventForFrontendSvc =
         getEntryEventsForService(entryApiBoundaryEvents, "frontend").get(0);
     apiNodes.get(0).getExitApiBoundaryEvents()
