@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.hypertrace.core.datamodel.ApiNodeEventEdge;
 import org.hypertrace.core.datamodel.AttributeValue;
 import org.hypertrace.core.datamodel.Event;
 import org.hypertrace.core.datamodel.MetricValue;
@@ -71,32 +70,26 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
     }
   }
 
-  private long calculateTotalWaitTime(List<OutboundEdge> outboundEdgeList) {
-    var firstExitEvent = outboundEdgeList.get(0);
-    long startTime = firstExitEvent.getStartTimeMillis(), endTime = firstExitEvent.getEndTimeMillis(), totalDuration = 0, runningDuration =
-        endTime - startTime;
-    for (int i = 1; i < outboundEdgeList.size(); i++) {
-      var currEvent = outboundEdgeList.get(i);
-      var currStartTime = currEvent.getStartTimeMillis();
-      var currEndTime = currEvent.getEndTimeMillis();
-      var currDuration = currEndTime - currStartTime;
-      //if the curr span starts before the prev span ends
-      // [----------]
-      //        [-------------------]
-      if (currStartTime < endTime) {
-        if (currDuration > runningDuration) {
-          runningDuration = currDuration;
-          endTime = currEndTime;
-        }
+  private long calculateTotalWaitTime(List<OutboundEdge> outboundEdges) {
+    OutboundEdge prevEdge = null;
+    long totalDuration = 0, startTime = outboundEdges.get(0).getStartTimeMillis(), endTime = outboundEdges.get(0).getEndTimeMillis();
+    for(int i = 0; i < outboundEdges.size(); i++) {
+      var currEdge = OutboundEdge.from(startTime, endTime);
+      var lookaheadEdge = outboundEdges.get(i + 1);
+      if(areSequential(currEdge, lookaheadEdge)) {
+        totalDuration += (endTime - startTime);
+        startTime = lookaheadEdge.getStartTimeMillis();
+        endTime = lookaheadEdge.getEndTimeMillis();
       } else {
-        // [------------]
-        //                 [-------------------]
-        totalDuration += runningDuration;
-        endTime = currEndTime;
-        runningDuration = currDuration;
+        startTime = Math.min(startTime, Math.min(currEdge.getStartTimeMillis(), lookaheadEdge.getStartTimeMillis()));
+        endTime = Math.max(endTime, Math.max(currEdge.getEndTimeMillis(), lookaheadEdge.getStartTimeMillis()));
       }
+      prevEdge = currEdge;
     }
-    return totalDuration;
+  }
+
+  private boolean areSequential(OutboundEdge currEdge, OutboundEdge lookaheadEdge) {
+    return false;
   }
 
 
