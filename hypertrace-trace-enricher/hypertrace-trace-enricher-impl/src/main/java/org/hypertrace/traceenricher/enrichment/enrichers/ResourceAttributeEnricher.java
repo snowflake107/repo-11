@@ -27,9 +27,7 @@ public class ResourceAttributeEnricher extends AbstractTraceEnricher {
   private static final String RESOURCE_ATTRIBUTES_CONFIG_KEY = "attributes";
   private static final String NODE_SELECTOR_KEY = "node.selector";
 
-  private static final String DEPLOYMENT_KEY = "deployment";
-
-  private static final String POD_NAME_KEY = "pod.name";
+  private static final String DEPLOYMENT_TYPE_KEY = "deployment.type";
 
   private static final String ATTRIBUTES_TO_MATCH_CONFIG_KEY = "attributesToMatch";
   private List<String> resourceAttributesToAdd = new ArrayList<>();
@@ -68,21 +66,12 @@ public class ResourceAttributeEnricher extends AbstractTraceEnricher {
                             attributeValue
                                 .getValue()
                                 .substring(attributeValue.getValue().lastIndexOf('/') + 1));
+                      } else if (resourceAttributeKey.equals(DEPLOYMENT_TYPE_KEY)) {
+                        return AttributeValueCreator.create(
+                            getDeploymentType(attributeValue.getValue()));
                       }
                       return attributeValue;
                     }));
-
-        // Add deployment attribute if pod name is available
-        if (resourceAttributeKey.equals(POD_NAME_KEY)) {
-          resourceAttributeMaybe.ifPresent(
-              attributeValue ->
-                  attributeMap.computeIfAbsent(
-                      DEPLOYMENT_KEY,
-                      key -> {
-                        return AttributeValueCreator.create(
-                            getDeploymentType(attributeValue.getValue()));
-                      }));
-        }
       }
     } catch (Exception e) {
       LOGGER.error(
@@ -99,12 +88,12 @@ public class ResourceAttributeEnricher extends AbstractTraceEnricher {
   }
 
   private String getDeploymentType(String hostName) {
-    if (hostName.contains(EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_CANARY))) {
-      return EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_CANARY);
-    } else if (hostName.contains(EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_BASELINE))) {
-      return EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_BASELINE);
-    } else if (hostName.contains(EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_WORKER))) {
-      return EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_WORKER);
+    for (Deployment d : Deployment.values()) {
+      if (d == Deployment.UNRECOGNIZED) {
+        break;
+      } else if (hostName.contains(EnrichedSpanConstants.getValue(d))) {
+        return EnrichedSpanConstants.getValue(d);
+      }
     }
     return EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_WEB);
   }

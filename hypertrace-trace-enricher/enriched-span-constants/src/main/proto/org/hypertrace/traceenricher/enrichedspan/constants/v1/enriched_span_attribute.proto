@@ -99,6 +99,6 @@ enum ErrorMetrics {
 enum Deployment {
     DEPLOYMENT_CANARY = 0 [(string_value) = "canary"];
     DEPLOYMENT_BASELINE = 1 [(string_value) = "baseline"];
-    DEPLOYMENT_WEB = 2 [(string_value) = "web"];
-    DEPLOYMENT_WORKER = 3 [(string_value) = "worker"];
+    DEPLOYMENT_WORKER = 2 [(string_value) = "worker"];
+    DEPLOYMENT_WEB = 3 [(string_value) = "web"];
 }
