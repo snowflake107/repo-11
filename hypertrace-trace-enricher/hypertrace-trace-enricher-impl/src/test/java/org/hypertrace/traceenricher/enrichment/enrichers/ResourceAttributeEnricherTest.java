@@ -83,7 +83,8 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
     assertEquals(
         resourceAttributesToAddList.size() - 1, event.getAttributes().getAttributeMap().size());
     assertEquals(
-        "test-canary-56f5d554c-5swkj", event.getAttributes().getAttributeMap().get("pod.name").getValue());
+        "test-canary-56f5d554c-5swkj",
+        event.getAttributes().getAttributeMap().get("pod.name").getValue());
     assertEquals("canary", event.getAttributes().getAttributeMap().get("deployment").getValue());
     assertEquals(
         "01188498a468b5fef1eb4accd63533297c195a73",
@@ -217,7 +218,9 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
             put(
                 "opencensus.exporterversion",
                 AttributeValue.newBuilder().setValue("Jaeger-Go-2.23.1").build());
-            put("host.name", AttributeValue.newBuilder().setValue("test-canary-56f5d554c-5swkj").build());
+            put(
+                "host.name",
+                AttributeValue.newBuilder().setValue("test-canary-56f5d554c-5swkj").build());
             put("ip", AttributeValue.newBuilder().setValue("10.21.18.171").build());
             put("client-uuid", AttributeValue.newBuilder().setValue("53a112a715bda986").build());
             put(
