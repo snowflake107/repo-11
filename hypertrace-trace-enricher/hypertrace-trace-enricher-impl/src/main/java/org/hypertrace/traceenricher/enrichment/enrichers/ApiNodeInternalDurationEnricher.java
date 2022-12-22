@@ -3,10 +3,8 @@ package org.hypertrace.traceenricher.enrichment.enrichers;
 import static org.hypertrace.core.datamodel.shared.AvroBuilderCache.fastNewBuilder;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.hypertrace.core.datamodel.AttributeValue;
 import org.hypertrace.core.datamodel.Event;
 import org.hypertrace.core.datamodel.MetricValue;
 import org.hypertrace.core.datamodel.StructuredTrace;
@@ -40,14 +38,15 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
           entryEvent.get().getEndTimeMillis() - entryEvent.get().getStartTimeMillis();
       var totalWaitTime = 0L;
       if (outboundEdges.size() > 0) {
-        totalWaitTime = calculateTotalWaitTime(outboundEdges);;
+        totalWaitTime = calculateTotalWaitTime(outboundEdges);
+        ;
       }
       entryEvent
           .get()
           .getAttributes()
           .getAttributeMap()
           .put(
-              EnrichedSpanConstants.INTERNAL_SVC_LATENCY,
+              EnrichedSpanConstants.API_INTERNAL_DURATION,
               AttributeValueCreator.create(
                   String.valueOf(entryApiBoundaryEventDuration - totalWaitTime)));
       // also put into metric map
@@ -56,7 +55,7 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
           .getMetrics()
           .getMetricMap()
           .put(
-              EnrichedSpanConstants.INTERNAL_SVC_LATENCY,
+              EnrichedSpanConstants.API_INTERNAL_DURATION,
               fastNewBuilder(MetricValue.Builder.class)
                   .setValue((double) (entryApiBoundaryEventDuration - totalWaitTime))
                   .build());
@@ -75,7 +74,8 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
         startTime = lookaheadEdge.getStartTimeMillis();
         endTime = lookaheadEdge.getEndTimeMillis();
       } else {
-        startTime = Math.min(virtualCurrEdge.getStartTimeMillis(), lookaheadEdge.getStartTimeMillis());
+        startTime =
+            Math.min(virtualCurrEdge.getStartTimeMillis(), lookaheadEdge.getStartTimeMillis());
         endTime = Math.max(virtualCurrEdge.getEndTimeMillis(), lookaheadEdge.getEndTimeMillis());
       }
     }

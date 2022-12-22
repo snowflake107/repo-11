@@ -5,8 +5,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.lang.reflect.Type;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -14,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.commons.codec.binary.Base64;
 import org.hypertrace.core.datamodel.Attributes;
 import org.hypertrace.core.datamodel.Edge;
 import org.hypertrace.core.datamodel.EdgeType;
@@ -23,20 +31,18 @@ import org.hypertrace.core.datamodel.shared.trace.AttributeValueCreator;
 import org.hypertrace.traceenricher.enrichedspan.constants.EnrichedSpanConstants;
 import org.hypertrace.traceenricher.enrichedspan.constants.v1.Api;
 import org.hypertrace.traceenricher.enrichedspan.constants.v1.BoundaryTypeValue;
-import org.hypertrace.traceenricher.enrichment.enrichers.ApiNodeInternalDurationTest.ByteBufferTypeAdapter;
 
 public class TestUtils {
 
   private static final String TEST_CUSTOMER_ID = "testCustomerId";
 
-  private static Gson gson =
+  private static final Gson gson =
       new GsonBuilder()
           .serializeNulls()
           .registerTypeHierarchyAdapter(ByteBuffer.class, new ByteBufferTypeAdapter())
           .create();
 
-  private TestUtils() {
-  }
+  private TestUtils() {}
 
   public static void assertTraceDoesNotContainAttribute(
       StructuredTrace trace, String attributeKey) {
@@ -142,10 +148,23 @@ public class TestUtils {
   public static StructuredTrace readJSONStructuredTraceFromClasspath(String fileName)
       throws FileNotFoundException {
 
-    URL resource =
-        Thread.currentThread().getContextClassLoader().getResource("trace.json");
+    URL resource = Thread.currentThread().getContextClassLoader().getResource("trace.json");
 
-    return gson.fromJson(new FileReader(resource.getPath()),
-        StructuredTrace.class);
+    return gson.fromJson(new FileReader(resource.getPath()), StructuredTrace.class);
+  }
+
+  public static class ByteBufferTypeAdapter
+      implements JsonDeserializer<ByteBuffer>, JsonSerializer<ByteBuffer> {
+
+    @Override
+    public ByteBuffer deserialize(
+        JsonElement jsonElement, Type type, JsonDeserializationContext context) {
+      return ByteBuffer.wrap(Base64.decodeBase64(jsonElement.getAsString()));
+    }
+
+    @Override
+    public JsonElement serialize(ByteBuffer src, Type typeOfSrc, JsonSerializationContext context) {
+      return new JsonPrimitive(Base64.encodeBase64String(src.array()));
+    }
   }
 }

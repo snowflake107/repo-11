@@ -72,7 +72,7 @@ public class ServiceInternalProcessingTimeEnricher extends AbstractTraceEnricher
                 .getAttributes()
                 .getAttributeMap()
                 .put(
-                    EnrichedSpanConstants.INTERNAL_SVC_LATENCY,
+                    EnrichedSpanConstants.API_INTERNAL_DURATION,
                     AttributeValueCreator.create(
                         String.valueOf(
                             entryApiBoundaryEventDuration
@@ -83,7 +83,7 @@ public class ServiceInternalProcessingTimeEnricher extends AbstractTraceEnricher
                 .getMetrics()
                 .getMetricMap()
                 .put(
-                    EnrichedSpanConstants.INTERNAL_SVC_LATENCY,
+                    EnrichedSpanConstants.API_INTERNAL_DURATION,
                     fastNewBuilder(MetricValue.Builder.class)
                         .setValue(
                             entryApiBoundaryEventDuration - totalEdgeDurations - httpExitCallsSum)
