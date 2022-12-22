@@ -3,6 +3,11 @@ package org.hypertrace.traceenricher.enrichment.enrichers;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import com.google.common.collect.Lists;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,11 +23,20 @@ import org.hypertrace.core.datamodel.shared.trace.AttributeValueCreator;
 import org.hypertrace.traceenricher.enrichedspan.constants.EnrichedSpanConstants;
 import org.hypertrace.traceenricher.enrichedspan.constants.v1.Api;
 import org.hypertrace.traceenricher.enrichedspan.constants.v1.BoundaryTypeValue;
+import org.hypertrace.traceenricher.enrichment.enrichers.ApiNodeInternalDurationTest.ByteBufferTypeAdapter;
 
 public class TestUtils {
+
   private static final String TEST_CUSTOMER_ID = "testCustomerId";
 
-  private TestUtils() {}
+  private static Gson gson =
+      new GsonBuilder()
+          .serializeNulls()
+          .registerTypeHierarchyAdapter(ByteBuffer.class, new ByteBufferTypeAdapter())
+          .create();
+
+  private TestUtils() {
+  }
 
   public static void assertTraceDoesNotContainAttribute(
       StructuredTrace trace, String attributeKey) {
@@ -123,5 +137,15 @@ public class TestUtils {
         .setEntityEventEdgeList(new ArrayList<>())
         .setEventList(Lists.newArrayList(events))
         .build();
+  }
+
+  public static StructuredTrace readJSONStructuredTraceFromClasspath(String fileName)
+      throws FileNotFoundException {
+
+    URL resource =
+        Thread.currentThread().getContextClassLoader().getResource("trace.json");
+
+    return gson.fromJson(new FileReader(resource.getPath()),
+        StructuredTrace.class);
   }
 }

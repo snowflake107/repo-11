@@ -30,23 +30,14 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class ServiceInternalProcessingTimeEnricherTest extends AbstractAttributeEnricherTest {
+public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
 
   private final Enricher testCandidate = new ApiNodeInternalDurationEnricher();
   private StructuredTrace trace;
 
   @BeforeEach
   public void setup() throws IOException {
-    Gson gson =
-        new GsonBuilder()
-            .serializeNulls()
-            .registerTypeHierarchyAdapter(ByteBuffer.class, new ByteBufferTypeAdapter())
-            .create();
-
-    URL resource =
-        Thread.currentThread().getContextClassLoader().getResource("trace.json");
-    trace = gson.fromJson(new FileReader(resource.getPath()),
-        StructuredTrace.class);
+    trace = TestUtils.readJSONStructuredTraceFromClasspath("trace.json");
   }
 
   @Test
