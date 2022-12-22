@@ -10,39 +10,51 @@ import org.hypertrace.core.datamodel.Event;
 import org.hypertrace.core.datamodel.MetricValue;
 import org.hypertrace.core.datamodel.StructuredTrace;
 import org.hypertrace.core.datamodel.shared.ApiNode;
+import org.hypertrace.core.datamodel.shared.HexUtils;
 import org.hypertrace.core.datamodel.shared.trace.AttributeValueCreator;
 import org.hypertrace.traceenricher.enrichedspan.constants.EnrichedSpanConstants;
 import org.hypertrace.traceenricher.enrichedspan.constants.utils.SpanUtils;
 import org.hypertrace.traceenricher.enrichment.AbstractTraceEnricher;
 import org.hypertrace.traceenricher.trace.util.ApiTraceGraph;
 import org.hypertrace.traceenricher.trace.util.ApiTraceGraphBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
 
+  private static final Logger LOG = LoggerFactory.getLogger(ApiNodeInternalDurationEnricher.class);
+
   @Override
   public void enrichTrace(StructuredTrace trace) {
-    ApiTraceGraph apiTraceGraph = ApiTraceGraphBuilder.buildGraph(trace);
-    List<ApiNode<Event>> apiNodes = apiTraceGraph.getApiNodeList();
 
-    for (ApiNode<Event> apiNode : apiNodes) {
-      Optional<Event> entryEventMaybe = apiNode.getEntryApiBoundaryEvent();
-      entryEventMaybe.ifPresent(
-          entryEvent -> {
-            // todo: Consider only those EXIT events that are CHILD_OF
-            // we normalise all EXIT calls and Outbound edges to NormalizedOutboundEdge
-            List<NormalizedOutboundEdge> normalizedOutboundEdges =
-                getNormalizedOutboundEdges(apiTraceGraph, apiNode);
-            // then sort these edges in ascending order of start times
-            normalizedOutboundEdges.sort(
-                (o1, o2) -> (int) (o1.startTimeMillis - o2.startTimeMillis));
-            var entryApiBoundaryEventDuration =
-                SpanUtils.getMetricValue(entryEvent, "Duration", -1);
-            var totalWaitTime = 0L;
-            if (normalizedOutboundEdges.size() > 0) {
-              totalWaitTime = calculateTotalWaitTime(normalizedOutboundEdges);
-            }
-            enrichSpan(entryEvent, entryApiBoundaryEventDuration, totalWaitTime);
-          });
+    try {
+      ApiTraceGraph apiTraceGraph = ApiTraceGraphBuilder.buildGraph(trace);
+      List<ApiNode<Event>> apiNodes = apiTraceGraph.getApiNodeList();
+
+      for (ApiNode<Event> apiNode : apiNodes) {
+        Optional<Event> entryEventMaybe = apiNode.getEntryApiBoundaryEvent();
+        entryEventMaybe.ifPresent(
+            entryEvent -> {
+              // todo: Consider only those EXIT events that are CHILD_OF
+              // we normalise all EXIT calls and Outbound edges to NormalizedOutboundEdge
+              List<NormalizedOutboundEdge> normalizedOutboundEdges =
+                  getNormalizedOutboundEdges(apiTraceGraph, apiNode);
+              // then sort these edges in ascending order of start times
+              normalizedOutboundEdges.sort(
+                  (o1, o2) -> (int) (o1.startTimeMillis - o2.startTimeMillis));
+              var entryApiBoundaryEventDuration =
+                  SpanUtils.getMetricValue(entryEvent, "Duration", -1);
+              var totalWaitTime = 0L;
+              if (normalizedOutboundEdges.size() > 0) {
+                totalWaitTime = calculateTotalWaitTime(normalizedOutboundEdges);
+              }
+              enrichSpan(entryEvent, entryApiBoundaryEventDuration, totalWaitTime);
+            });
+      }
+    } catch (Exception e) {
+      LOG.error(
+          "Exception enriching trace: {} for internal duration",
+          HexUtils.getHex(trace.getTraceId()));
     }
   }
 
