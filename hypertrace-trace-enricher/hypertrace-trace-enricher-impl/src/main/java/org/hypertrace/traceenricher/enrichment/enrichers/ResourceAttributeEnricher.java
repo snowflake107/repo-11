@@ -61,16 +61,18 @@ public class ResourceAttributeEnricher extends AbstractTraceEnricher {
                 attributeMap.computeIfAbsent(
                     resourceAttributeKey,
                     key -> {
-                      if (resourceAttributeKey.equals(NODE_SELECTOR_KEY)) {
-                        attributeValue.setValue(
-                            attributeValue
-                                .getValue()
-                                .substring(attributeValue.getValue().lastIndexOf('/') + 1));
-                      } else if (resourceAttributeKey.equals(DEPLOYMENT_TYPE_KEY)) {
-                        return AttributeValueCreator.create(
-                            getDeploymentType(attributeValue.getValue()));
+                      switch (resourceAttributeKey) {
+                        case DEPLOYMENT_TYPE_KEY:
+                          return AttributeValueCreator.create(
+                              getDeploymentType(attributeValue.getValue()));
+                        case NODE_SELECTOR_KEY:
+                          attributeValue.setValue(
+                              attributeValue
+                                  .getValue()
+                                  .substring(attributeValue.getValue().lastIndexOf('/') + 1));
+                        default:
+                          return attributeValue;
                       }
-                      return attributeValue;
                     }));
       }
     } catch (Exception e) {
@@ -88,6 +90,10 @@ public class ResourceAttributeEnricher extends AbstractTraceEnricher {
   }
 
   private String getDeploymentType(String hostName) {
+    /*
+    There can be applications which have canary/baseline workers. (eg: worker-canary, worker-baseline)
+    These rare cases are not handled for now.
+    */
     for (Deployment d : Deployment.values()) {
       if (d == Deployment.UNRECOGNIZED) {
         break;
