@@ -24,21 +24,16 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
 
     for (ApiNode<Event> apiNode : apiNodes) {
       Optional<Event> entryEvent = apiNode.getEntryApiBoundaryEvent();
-      List<OutboundEdge> outboundEdges =
-          apiNode.getExitApiBoundaryEvents().stream()
-              .map(event -> OutboundEdge.from(event.getStartTimeMillis(), event.getEndTimeMillis()))
-              .collect(Collectors.toList());
-      apiTraceGraph.getOutboundEdgesForApiNode(apiNode).stream()
-          .map(edge -> OutboundEdge.from(edge.getStartTimeMillis(), edge.getEndTimeMillis()))
-          .forEach(outboundEdges::add);
-      outboundEdges.sort((o1, o2) -> (int) (o1.startTimeMillis - o2.startTimeMillis));
+      //we normalise all EXIT calls and Outbound edges to NormalizedOutboundEdge
+      List<NormalizedOutboundEdge> normalizedOutboundEdges = getNormalizedOutboundEdges(apiTraceGraph, apiNode);
+      //then sort these edges in ascending order of start times
+      normalizedOutboundEdges.sort((o1, o2) -> (int) (o1.startTimeMillis - o2.startTimeMillis));
       // todo: Consider only those EXIT events that are CHILD_OF
-      // todo: Filter for HTTP backends
       var entryApiBoundaryEventDuration =
           entryEvent.get().getEndTimeMillis() - entryEvent.get().getStartTimeMillis();
       var totalWaitTime = 0L;
-      if (outboundEdges.size() > 0) {
-        totalWaitTime = calculateTotalWaitTime(outboundEdges);
+      if (normalizedOutboundEdges.size() > 0) {
+        totalWaitTime = calculateTotalWaitTime(normalizedOutboundEdges);
         ;
       }
       entryEvent
@@ -62,12 +57,24 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
     }
   }
 
-  private long calculateTotalWaitTime(List<OutboundEdge> outboundEdges) {
+  private List<NormalizedOutboundEdge> getNormalizedOutboundEdges(ApiTraceGraph apiTraceGraph,
+      ApiNode<Event> apiNode) {
+    List<NormalizedOutboundEdge> normalizedOutboundEdges =
+        apiNode.getExitApiBoundaryEvents().stream()
+            .map(event -> NormalizedOutboundEdge.from(event.getStartTimeMillis(), event.getEndTimeMillis()))
+            .collect(Collectors.toList());
+    apiTraceGraph.getOutboundEdgesForApiNode(apiNode).stream()
+        .map(edge -> NormalizedOutboundEdge.from(edge.getStartTimeMillis(), edge.getEndTimeMillis()))
+        .forEach(normalizedOutboundEdges::add);
+    return normalizedOutboundEdges;
+  }
+
+  private long calculateTotalWaitTime(List<NormalizedOutboundEdge> outboundEdges) {
     long totalWait = 0;
     long startTime = outboundEdges.get(0).getStartTimeMillis();
     long endTime = outboundEdges.get(0).getEndTimeMillis();
     for (int i = 0; i < outboundEdges.size() - 1; i++) {
-      var virtualCurrEdge = OutboundEdge.from(startTime, endTime);
+      var virtualCurrEdge = NormalizedOutboundEdge.from(startTime, endTime);
       var lookaheadEdge = outboundEdges.get(i + 1);
       if (areSequential(virtualCurrEdge, lookaheadEdge)) {
         totalWait += virtualCurrEdge.getDuration();
@@ -83,24 +90,25 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
     return totalWait;
   }
 
-  private boolean areSequential(OutboundEdge currEdge, OutboundEdge lookaheadEdge) {
+  private boolean areSequential(
+      NormalizedOutboundEdge currEdge, NormalizedOutboundEdge lookaheadEdge) {
     return lookaheadEdge.getStartTimeMillis() >= currEdge.getEndTimeMillis();
   }
 
-  private static class OutboundEdge {
+  private static class NormalizedOutboundEdge {
 
     private final long startTimeMillis;
     private final long endTimeMillis;
     private final long duration;
 
-    OutboundEdge(long startTimeMillis, long endTimeMillis) {
+    NormalizedOutboundEdge(long startTimeMillis, long endTimeMillis) {
       this.startTimeMillis = startTimeMillis;
       this.endTimeMillis = endTimeMillis;
       this.duration = endTimeMillis - startTimeMillis;
     }
 
-    public static OutboundEdge from(long startTimeMillis, long endTimeMillis) {
-      return new OutboundEdge(startTimeMillis, endTimeMillis);
+    public static NormalizedOutboundEdge from(long startTimeMillis, long endTimeMillis) {
+      return new NormalizedOutboundEdge(startTimeMillis, endTimeMillis);
     }
 
     public long getStartTimeMillis() {
