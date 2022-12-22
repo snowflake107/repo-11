@@ -14,6 +14,7 @@ import org.hypertrace.core.datamodel.Event;
 import org.hypertrace.core.datamodel.shared.SpanAttributeUtils;
 import org.hypertrace.core.semantic.convention.constants.http.OTelHttpSemanticConventions;
 import org.hypertrace.core.span.constants.RawSpanConstants;
+import org.hypertrace.core.span.constants.v1.SpanAttribute;
 import org.hypertrace.core.span.constants.v1.TracerAttribute;
 import org.hypertrace.entity.constants.v1.ApiAttribute;
 import org.hypertrace.entity.constants.v1.BackendAttribute;
@@ -72,6 +73,7 @@ public class EnrichedSpanUtils {
 
   private static final String SPAN_TYPE_ATTR =
       EnrichedSpanConstants.getValue(CommonAttribute.COMMON_ATTRIBUTE_SPAN_TYPE);
+
   private static final String API_BOUNDARY_TYPE_ATTR =
       EnrichedSpanConstants.getValue(Api.API_BOUNDARY_TYPE);
   private static final String TRACER_TYPE_ATTR =

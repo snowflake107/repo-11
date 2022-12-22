@@ -10,7 +10,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
-import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.lang.reflect.Type;
@@ -18,12 +17,12 @@ import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.apache.avro.file.DataFileReader;
-import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.commons.codec.binary.Base64;
 import org.hypertrace.core.datamodel.Event;
 import org.hypertrace.core.datamodel.StructuredTrace;
+import org.hypertrace.core.datamodel.shared.ApiNode;
 import org.hypertrace.traceenricher.enrichedspan.constants.EnrichedSpanConstants;
+import org.hypertrace.traceenricher.enrichedspan.constants.utils.EnrichedSpanUtils;
 import org.hypertrace.traceenricher.enrichment.Enricher;
 import org.hypertrace.traceenricher.trace.util.ApiTraceGraph;
 import org.hypertrace.traceenricher.trace.util.ApiTraceGraphBuilder;
@@ -52,19 +51,6 @@ public class ServiceInternalProcessingTimeEnricherTest extends AbstractAttribute
 
   @Test
   public void validateServiceInternalTimeAttributeInEntrySpans() {
-    // this trace has 12 api nodes
-    // api edges
-    // 0 -> [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-    // backend exit
-    // 1 -> to redis 13 exit calls
-    // 2 -> to mysql 1 exit call
-    // for events parts of api_node 0, there should 12 exit calls
-    // for events parts of api_node 1, there should be 13 exit calls
-    // for events parts of api_node 2, there should be 1 exit calls
-    // this trace has 4 services: [frontend, driver, customer, route]
-    // frontend service has 1 api_entry span and that api_node has 12 exit calls [driver: 1,
-    // customer: 1, route: 10]
-    // setup
     ApiTraceGraph apiTraceGraph = ApiTraceGraphBuilder.buildGraph(trace);
     var apiNodes = apiTraceGraph.getApiNodeList();
     // Assert preconditions
@@ -100,33 +86,32 @@ public class ServiceInternalProcessingTimeEnricherTest extends AbstractAttribute
 
   @Test
   public void validateServiceInternalTimeValueInSpans() {
+
     ApiTraceGraph apiTraceGraph = ApiTraceGraphBuilder.buildGraph(trace);
     var apiNodes = apiTraceGraph.getApiNodeList();
     List<Event> entryApiBoundaryEvents =
         apiNodes.stream().map(a -> a.getEntryApiBoundaryEvent().get()).collect(toList());
-    // assert pre-conditions
-//    Assertions.assertEquals(13, entryApiBoundaryEvents.size());
-    // execute
-//    testCandidate.enrichTrace(trace);
-//    1613406996355, 1613406996653
-//    1613406996653, 1613406996836
-//    1613406996836, 1613406996898
-//    1613406996836, 1613406996902
-//    1613406996837, 1613406996909
-//    1613406996899, 1613406996951
-//    1613406996902, 1613406996932
-//    1613406996909, 1613406996960
-//    1613406996932, 1613406996979
-//    1613406996951, 1613406996996
-//    1613406996960, 1613406997014
-//    1613406996980, 1613406997033
-    //total wait time for frontend = (1613406996653 - 1613406996355) + (1613406996836 - 1613406996653) + (1613406997033 - 1613406996836) = 678ms
     testCandidate.enrichTrace(trace);
+
+    //This Hotrod trace comprises four services: frontend, driver, customer and route.
+    //there are 13 exit calls from frontend to [driver, customer and route]. Below are the start and end times of each such EXIT call.
+    //    1613406996355, 1613406996653 -> HTTP HTTP GET /customer
+    //    1613406996653, 1613406996836 -> driver GRPC driver.DriverService/FindNearest
+    //    1613406996836, 1613406996898 -> route HTTP GET: /route
+    //    1613406996836, 1613406996902 -> route HTTP GET: /route
+    //    1613406996837, 1613406996909 -> route HTTP GET: /route
+    //    1613406996899, 1613406996951 -> route HTTP GET: /route
+    //    1613406996902, 1613406996932 -> route HTTP GET: /route
+    //    1613406996909, 1613406996960 -> route HTTP GET: /route
+    //    1613406996932, 1613406996979 -> route HTTP GET: /route
+    //    1613406996951, 1613406996996 -> route HTTP GET: /route
+    //    1613406996960, 1613406997014 -> route HTTP GET: /route
+    //    1613406996980, 1613406997033 -> route HTTP GET: /route
+    //calls to /customer and /FindNearest are sequential. The 10 calls to /route are made via a thread pool and are parallel. So total wait
+    //time is: (1613406996653 - 1613406996355) + (1613406996836 - 1613406996653) + (1613406997033 - 1613406996836) = 678ms
     var entryEventForFrontendSvc =
         getEntryEventsForService(entryApiBoundaryEvents, "frontend").get(0);
-    apiNodes.get(0).getExitApiBoundaryEvents()
-        .forEach(a -> System.out.println(a.getAttributes().getAttributeMap().get("http.url") + ", " + a.getStartTimeMillis() + ", " + a.getEndTimeMillis()));
-    // total outbound edge duration = 1016ms
+    // total outbound edge duration = 678ms
     // entry event duration = 678ms
     Assertions.assertEquals(
         "0",
@@ -135,6 +120,58 @@ public class ServiceInternalProcessingTimeEnricherTest extends AbstractAttribute
             .getAttributeMap()
             .get(EnrichedSpanConstants.INTERNAL_SVC_LATENCY)
             .getValue());
+
+    //there are 13 EXIT calls from driver to redis. Here's the start and end times of each:
+    //    1613406996655, 1613406996672
+    //    1613406996672, 1613406996681
+    //    1613406996681, 1613406996694
+    //    1613406996694, 1613406996724
+    //    1613406996725, 1613406996731
+    //    1613406996731, 1613406996736
+    //    1613406996736, 1613406996745
+    //    1613406996745, 1613406996752
+    //    1613406996752, 1613406996780
+    //    1613406996781, 1613406996792
+    //    1613406996792, 1613406996808
+    //    1613406996808, 1613406996819
+    //    1613406996819, 1613406996834
+    // All of these calls are sequential, and the total wait time is simply the sum of duration of each span = 177ms
+    //entry even duration = 180ms
+    //wait time = 177ms
+    Assertions.assertEquals(
+        "3",
+        entryApiBoundaryEvents.get(1)
+            .getAttributes()
+            .getAttributeMap()
+            .get(EnrichedSpanConstants.INTERNAL_SVC_LATENCY)
+            .getValue());
+
+    //there is 1 EXIT call from customer to the SQL DB. Here're the start and end times:
+    // 1613406996356, 1613406996652
+    // total wait time = 296ms
+    // total duration of ENTRY span = 296ms
+    Assertions.assertEquals(
+        "0",
+        entryApiBoundaryEvents.get(2)
+            .getAttributes()
+            .getAttributeMap()
+            .get(EnrichedSpanConstants.INTERNAL_SVC_LATENCY)
+            .getValue());
+
+    //All 10 ENTRY spans to ROUTE have no EXIT span. So all time is taken internally.
+    for(int i = 3; i < apiNodes.size(); i++) {
+      var apiNode = apiNodes.get(i);
+      //ENTRY event
+      var event = apiNode.getEntryApiBoundaryEvent().get();
+      var entryEventDuration = event.getEndTimeMillis() - event.getStartTimeMillis();
+      Assertions.assertEquals(
+          String.valueOf(entryEventDuration),
+          event
+              .getAttributes()
+              .getAttributeMap()
+              .get(EnrichedSpanConstants.INTERNAL_SVC_LATENCY)
+              .getValue());
+    }
   }
 
   private static List<Event> getEntryEventsForService(

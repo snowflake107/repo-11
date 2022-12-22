@@ -28,13 +28,6 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
       Optional<Event> entryEvent = apiNode.getEntryApiBoundaryEvent();
       List<OutboundEdge> outboundEdges =
           apiNode.getExitApiBoundaryEvents().stream()
-              .filter(
-                  event -> {
-                    Map<String, AttributeValue> enrichedAttributes =
-                        event.getEnrichedAttributes().getAttributeMap();
-                    return enrichedAttributes.containsKey("BACKEND_PROTOCOL")
-                        && enrichedAttributes.get("BACKEND_PROTOCOL").getValue().contains("HTTP");
-                  })
               .map(event -> OutboundEdge.from(event.getStartTimeMillis(), event.getEndTimeMillis()))
               .collect(Collectors.toList());
       apiTraceGraph.getOutboundEdgesForApiNode(apiNode).stream()
@@ -45,10 +38,10 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
       // todo: Filter for HTTP backends
       var entryApiBoundaryEventDuration =
           entryEvent.get().getEndTimeMillis() - entryEvent.get().getStartTimeMillis();
-      if (outboundEdges.size() == 0) {
-        return;
+      var totalWaitTime = 0L;
+      if (outboundEdges.size() > 0) {
+        totalWaitTime = calculateTotalWaitTime(outboundEdges);;
       }
-      var totalWaitTime = calculateTotalWaitTime(outboundEdges);
       entryEvent
           .get()
           .getAttributes()
