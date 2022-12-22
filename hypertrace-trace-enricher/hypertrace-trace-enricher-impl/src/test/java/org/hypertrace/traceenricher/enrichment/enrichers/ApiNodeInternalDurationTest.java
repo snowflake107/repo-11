@@ -61,7 +61,7 @@ public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
   }
 
   @Test
-  public void validateServiceInternalTimeValueInSpans() {
+  public void validateHotrodTraceForInternalDuration() {
 
     ApiTraceGraph apiTraceGraph = ApiTraceGraphBuilder.buildGraph(trace);
     var apiNodes = apiTraceGraph.getApiNodeList();
