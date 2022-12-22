@@ -154,7 +154,7 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
     return lookaheadEdge.getStartTimeMillis() >= currEdge.getEndTimeMillis();
   }
 
-  private static class NormalizedOutboundEdge {
+  static class NormalizedOutboundEdge {
 
     private final long startTimeMillis;
     private final long endTimeMillis;

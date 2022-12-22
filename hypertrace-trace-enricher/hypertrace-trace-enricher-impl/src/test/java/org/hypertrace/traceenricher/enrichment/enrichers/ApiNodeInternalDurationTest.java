@@ -4,11 +4,12 @@ import static java.util.stream.Collectors.toList;
 import static org.hypertrace.traceenricher.enrichedspan.constants.utils.SpanUtils.getMetricValue;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import org.hypertrace.core.datamodel.Event;
 import org.hypertrace.core.datamodel.StructuredTrace;
 import org.hypertrace.traceenricher.enrichedspan.constants.EnrichedSpanConstants;
-import org.hypertrace.traceenricher.enrichment.Enricher;
+import org.hypertrace.traceenricher.enrichment.enrichers.ApiNodeInternalDurationEnricher.NormalizedOutboundEdge;
 import org.hypertrace.traceenricher.trace.util.ApiTraceGraph;
 import org.hypertrace.traceenricher.trace.util.ApiTraceGraphBuilder;
 import org.junit.jupiter.api.Assertions;
@@ -17,7 +18,7 @@ import org.junit.jupiter.api.Test;
 
 public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
 
-  private final Enricher testCandidate = new ApiNodeInternalDurationEnricher();
+  private final ApiNodeInternalDurationEnricher testCandidate = new ApiNodeInternalDurationEnricher();
   private StructuredTrace trace;
 
   @BeforeEach
@@ -136,5 +137,24 @@ public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
           getMetricValue(entryEvent, "Duration", -1),
           getMetricValue(entryEvent, EnrichedSpanConstants.API_INTERNAL_DURATION, -1));
     }
+  }
+
+  @Test
+  public void testCustomTraces() {
+    long now = System.currentTimeMillis();
+    //all sequential
+    NormalizedOutboundEdge e1 = NormalizedOutboundEdge.from(now,
+        now + Duration.ofMillis(100).toMillis());
+    NormalizedOutboundEdge e2 = NormalizedOutboundEdge.from(
+        now + Duration.ofMillis(102).toMillis(), now + Duration.ofMillis(110).toMillis());
+    NormalizedOutboundEdge e3 = NormalizedOutboundEdge.from(
+        now + Duration.ofMillis(120).toMillis(), now + Duration.ofMillis(150).toMillis());
+    List<NormalizedOutboundEdge> outboundEdges = List.of(e1, e2, e3);
+    Assertions.assertEquals(138, testCandidate.calculateTotalWaitTime(outboundEdges));
+    //all parallel
+    e1 = NormalizedOutboundEdge.from(now, now + Duration.ofMillis(100).toMillis());
+    e2 = NormalizedOutboundEdge.from(now + Duration.ofMillis(90).toMillis(), now + Duration.ofMillis(110).toMillis());
+    e3 = NormalizedOutboundEdge.from(now + Duration.ofMillis(92).toMillis(), now + Duration.ofMillis(98).toMillis());
+    Assertions.assertEquals(110, testCandidate.calculateTotalWaitTime(List.of(e1, e2, e3)));
   }
 }
