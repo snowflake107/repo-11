@@ -58,27 +58,6 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
     }
   }
 
-  private void enrichSpan(
-      Event entryEvent, double entryApiBoundaryEventDuration, long totalWaitTime) {
-    // enriched attributes
-    entryEvent
-        .getAttributes()
-        .getAttributeMap()
-        .put(
-            EnrichedSpanConstants.API_INTERNAL_DURATION,
-            AttributeValueCreator.create(
-                String.valueOf(entryApiBoundaryEventDuration - totalWaitTime)));
-    // metric map
-    entryEvent
-        .getMetrics()
-        .getMetricMap()
-        .put(
-            EnrichedSpanConstants.API_INTERNAL_DURATION,
-            fastNewBuilder(MetricValue.Builder.class)
-                .setValue(entryApiBoundaryEventDuration - totalWaitTime)
-                .build());
-  }
-
   private List<NormalizedOutboundEdge> getNormalizedOutboundEdges(
       ApiTraceGraph apiTraceGraph, ApiNode<Event> apiNode) {
     List<NormalizedOutboundEdge> normalizedOutboundEdges =
@@ -164,6 +143,27 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
   private boolean areSequential(
       NormalizedOutboundEdge currEdge, NormalizedOutboundEdge lookaheadEdge) {
     return lookaheadEdge.getStartTimeMillis() >= currEdge.getEndTimeMillis();
+  }
+
+  private void enrichSpan(
+      Event entryEvent, double entryApiBoundaryEventDuration, long totalWaitTime) {
+    // enriched attributes
+    entryEvent
+        .getAttributes()
+        .getAttributeMap()
+        .put(
+            EnrichedSpanConstants.API_INTERNAL_DURATION,
+            AttributeValueCreator.create(
+                String.valueOf(entryApiBoundaryEventDuration - totalWaitTime)));
+    // metric map
+    entryEvent
+        .getMetrics()
+        .getMetricMap()
+        .put(
+            EnrichedSpanConstants.API_INTERNAL_DURATION,
+            fastNewBuilder(MetricValue.Builder.class)
+                .setValue(entryApiBoundaryEventDuration - totalWaitTime)
+                .build());
   }
 
   static class NormalizedOutboundEdge {
