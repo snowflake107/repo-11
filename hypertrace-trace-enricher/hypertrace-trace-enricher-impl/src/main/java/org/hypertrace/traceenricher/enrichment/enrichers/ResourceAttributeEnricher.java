@@ -9,6 +9,9 @@ import java.util.stream.Collectors;
 import org.hypertrace.core.datamodel.AttributeValue;
 import org.hypertrace.core.datamodel.Event;
 import org.hypertrace.core.datamodel.StructuredTrace;
+import org.hypertrace.core.datamodel.shared.trace.AttributeValueCreator;
+import org.hypertrace.traceenricher.enrichedspan.constants.EnrichedSpanConstants;
+import org.hypertrace.traceenricher.enrichedspan.constants.v1.Deployment;
 import org.hypertrace.traceenricher.enrichment.AbstractTraceEnricher;
 import org.hypertrace.traceenricher.enrichment.clients.ClientRegistry;
 import org.slf4j.Logger;
@@ -23,6 +26,9 @@ public class ResourceAttributeEnricher extends AbstractTraceEnricher {
   private static final Logger LOGGER = LoggerFactory.getLogger(ResourceAttributeEnricher.class);
   private static final String RESOURCE_ATTRIBUTES_CONFIG_KEY = "attributes";
   private static final String NODE_SELECTOR_KEY = "node.selector";
+
+  private static final String DEPLOYMENT_TYPE_KEY = "deployment.type";
+
   private static final String ATTRIBUTES_TO_MATCH_CONFIG_KEY = "attributesToMatch";
   private List<String> resourceAttributesToAdd = new ArrayList<>();
   private Map<String, String> resourceAttributeKeysToMatch = new HashMap<>();
@@ -55,13 +61,18 @@ public class ResourceAttributeEnricher extends AbstractTraceEnricher {
                 attributeMap.computeIfAbsent(
                     resourceAttributeKey,
                     key -> {
-                      if (resourceAttributeKey.equals(NODE_SELECTOR_KEY)) {
-                        attributeValue.setValue(
-                            attributeValue
-                                .getValue()
-                                .substring(attributeValue.getValue().lastIndexOf('/') + 1));
+                      switch (resourceAttributeKey) {
+                        case DEPLOYMENT_TYPE_KEY:
+                          return AttributeValueCreator.create(
+                              getDeploymentType(attributeValue.getValue()));
+                        case NODE_SELECTOR_KEY:
+                          attributeValue.setValue(
+                              attributeValue
+                                  .getValue()
+                                  .substring(attributeValue.getValue().lastIndexOf('/') + 1));
+                        default:
+                          return attributeValue;
                       }
-                      return attributeValue;
                     }));
       }
     } catch (Exception e) {
@@ -76,5 +87,20 @@ public class ResourceAttributeEnricher extends AbstractTraceEnricher {
     return (event.getResourceIndex() >= 0)
         && (event.getAttributes() != null)
         && (event.getAttributes().getAttributeMap() != null);
+  }
+
+  private String getDeploymentType(String hostName) {
+    /*
+    There can be applications which have canary/baseline workers. (eg: worker-canary, worker-baseline)
+    These rare cases are not handled for now.
+    */
+    for (Deployment d : Deployment.values()) {
+      if (d == Deployment.UNRECOGNIZED) {
+        break;
+      } else if (hostName.contains(EnrichedSpanConstants.getValue(d))) {
+        return EnrichedSpanConstants.getValue(d);
+      }
+    }
+    return EnrichedSpanConstants.getValue(Deployment.DEPLOYMENT_WEB);
   }
 }

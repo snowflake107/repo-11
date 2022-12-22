@@ -83,7 +83,10 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
     assertEquals(
         resourceAttributesToAddList.size() - 2, event.getAttributes().getAttributeMap().size());
     assertEquals(
-        "test-56f5d554c-5swkj", event.getAttributes().getAttributeMap().get("pod.name").getValue());
+        "test-canary-56f5d554c-5swkj",
+        event.getAttributes().getAttributeMap().get("pod.name").getValue());
+    assertEquals(
+        "canary", event.getAttributes().getAttributeMap().get("deployment.type").getValue());
     assertEquals(
         "01188498a468b5fef1eb4accd63533297c195a73",
         event.getAttributes().getAttributeMap().get("service.version").getValue());
@@ -111,6 +114,11 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
         "worker-generic", event2.getAttributes().getAttributeMap().get("node.name").getValue());
     assertEquals(
         "worker-generic", event2.getAttributes().getAttributeMap().get("node.selector").getValue());
+    assertEquals(
+        "test1-baseline-56f5d554c-5swkj",
+        event2.getAttributes().getAttributeMap().get("pod.name").getValue());
+    assertEquals(
+        "baseline", event2.getAttributes().getAttributeMap().get("deployment.type").getValue());
 
     Event event3 =
         Event.newBuilder()
@@ -121,6 +129,11 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
     event3.setResourceIndex(2);
     resourceAttributeEnricher.enrichEvent(structuredTrace, event3);
     assertEquals("", event3.getAttributes().getAttributeMap().get("node.selector").getValue());
+    assertEquals(
+        "test1-worker-56f5d554c-5swkj",
+        event3.getAttributes().getAttributeMap().get("pod.name").getValue());
+    assertEquals(
+        "worker", event3.getAttributes().getAttributeMap().get("deployment.type").getValue());
 
     Event event4 =
         Event.newBuilder()
@@ -133,6 +146,7 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
     assertEquals(
         "worker-generic", event4.getAttributes().getAttributeMap().get("node.selector").getValue());
     assertEquals("pod1", event4.getAttributes().getAttributeMap().get("pod.name").getValue());
+    assertEquals("web", event4.getAttributes().getAttributeMap().get("deployment.type").getValue());
   }
 
   private Resource getResource4() {
@@ -157,6 +171,9 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
                 AttributeValue.newBuilder()
                     .setValue("node-role.kubernetes.io/worker-generic/")
                     .build());
+            put(
+                "host.name",
+                AttributeValue.newBuilder().setValue("test1-worker-56f5d554c-5swkj").build());
           }
         };
     return Resource.newBuilder()
@@ -177,7 +194,9 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
             put(
                 "opencensus.exporterversion",
                 AttributeValue.newBuilder().setValue("Jaeger-Go-2.23.1").build());
-            put("host.name", AttributeValue.newBuilder().setValue("test1-56f5d554c-5swkj").build());
+            put(
+                "host.name",
+                AttributeValue.newBuilder().setValue("test1-baseline-56f5d554c-5swkj").build());
             put("ip", AttributeValue.newBuilder().setValue("10.21.18.1712").build());
             put("client-uuid", AttributeValue.newBuilder().setValue("53a112a715bdf86").build());
             put("node.name", AttributeValue.newBuilder().setValue("worker-generic").build());
@@ -210,7 +229,9 @@ public class ResourceAttributeEnricherTest extends AbstractAttributeEnricherTest
             put(
                 "opencensus.exporterversion",
                 AttributeValue.newBuilder().setValue("Jaeger-Go-2.23.1").build());
-            put("host.name", AttributeValue.newBuilder().setValue("test-56f5d554c-5swkj").build());
+            put(
+                "host.name",
+                AttributeValue.newBuilder().setValue("test-canary-56f5d554c-5swkj").build());
             put("ip", AttributeValue.newBuilder().setValue("10.21.18.171").build());
             put("client-uuid", AttributeValue.newBuilder().setValue("53a112a715bda986").build());
             put(
