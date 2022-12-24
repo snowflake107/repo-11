@@ -67,17 +67,18 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
                     NormalizedOutboundEdge.from(
                         event.getStartTimeMillis(), event.getEndTimeMillis()))
             .collect(Collectors.toList());
-//    apiTraceGraph.getOutboundEdgesForApiNode(apiNode).stream()
-//        .map(
-//            edge -> NormalizedOutboundEdge.from(edge.getStartTimeMillis(), edge.getEndTimeMillis()))
-//        .forEach(normalizedOutboundEdges::add);
+    //    apiTraceGraph.getOutboundEdgesForApiNode(apiNode).stream()
+    //        .map(
+    //            edge -> NormalizedOutboundEdge.from(edge.getStartTimeMillis(),
+    // edge.getEndTimeMillis()))
+    //        .forEach(normalizedOutboundEdges::add);
     return normalizedOutboundEdges;
   }
 
   /*
   The algo look at two edges at a time and check if they're sequential or parallel. For sequential edges, wait time is simply
-  the sum of the two. However, for parallel edges (in a group), the algorithm creates a virtual edge from the start of the very first
-  edge in the group to the end of the very last edge in the group. This is the approximate total wait time for the group:
+  the sum of the two. However, for parallel edges (in a group), the algorithm simply takes the longest span in the group and adds it to the
+  total wait time.
   Examples:
   //   [--------d1---------]
   //                        [--------d2----------]
@@ -89,63 +90,54 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
   //                    t3 [----------] t4
   //                          t5 [----------------] t6
   //                                t7 [--------------------------] t8
-  //                  <----------------virtual edge--------------->
-  // In this case, the total wait time is d1 + duration(virtual edge) = d1 + (t8 - t1)
-  //
-  // The virtual edge is a reasonable approximation to the total wait time because the application starts waiting as soon as all the requests are submitted asynchronously
-  // which is very fast, and can be approximated by the start time of the very first span. The wait ends once the very last response is received. This obviously is not very correct because
-  // there might be thread scheduling delays for n no. of reasons. What if there is a substantial time difference b/w when the application submitted all the requests and
-  // the time when the very first request is executed? Such scheduling delays can either be the thread is busy executing a previous network request (in which we should add the scheduling delay to the WAIT time)
-  // or it is busy doing something else internally (in which we should not add the scheduling delay to the wait time). It is impossible to divide such waits b/w application time and network time using just trace data.
+  // In this case, the total wait time is d1 + max((t2 - t1), (t4 - t3), (t6 - t5), (t8 - t7)) = d1 + (t8 - t7)
+  // Parallel requests are typically submitted to an executor service which then reads requests from a work queue and assigns them to workers based
+  // on their availability. However, we must exclude any time the application spends on thread availability. We assume the best case: The ES has unlimited
+  // no of threads and it fires requests as soon as they're submitted. So the above diagram becomes:
+  // [----d1-----]
+  //                t1 [-------------------] t2
+  //                t3 [----------] t4
+  //                t5 [----------------] t6
+  //                t7 [--------------------------] t8
+  // So virtually, all requests start from almost the same point. The application waits till it gets the final response, which is represented by the longest span in the group.
    */
   @VisibleForTesting
   long calculateTotalWaitTime(List<NormalizedOutboundEdge> outboundEdges) {
     long totalWait = 0;
-    long startTime = outboundEdges.get(0).getStartTimeMillis();
-    long endTime = outboundEdges.get(0).getEndTimeMillis();
+    long maxRunningEndTime = outboundEdges.get(0).getEndTimeMillis();
     long runningWaitTime = outboundEdges.get(0).getDuration();
     for (int i = 0; i < outboundEdges.size() - 1; i++) {
-      // we call it a virtual current edge because for parallel spans, we create an edge that spans
-      // multiple spans
-      var virtualCurrEdge = NormalizedOutboundEdge.from(startTime, endTime);
       var lookaheadEdge = outboundEdges.get(i + 1);
-      if (areSequential(virtualCurrEdge, lookaheadEdge)) {
-        // if curr edge and lookahead edge are sequential, we simply update the total duration
+      if (isSequential(maxRunningEndTime, lookaheadEdge)) {
+        // .....-----] maxRunningEndTime
+        //             [----lookahead edge---]
+        // if lookahead edge is sequential in the series, we add the running wait time to the total
+        // wait.
         totalWait += runningWaitTime;
-        // the new virtual edge becomes the lookahead edge. This virtual edge is also an actual
-        // edge.
-        startTime = lookaheadEdge.getStartTimeMillis();
-        endTime = lookaheadEdge.getEndTimeMillis();
+        // since it's sequential, maxRunningEndTime is simply the end time of the lookahead edge
+        maxRunningEndTime = lookaheadEdge.getEndTimeMillis();
+        // the new running wait time becomes the duration of this edge.
         runningWaitTime = lookaheadEdge.getDuration();
       } else {
-        // if curr edge and lookahead edge are parallel, then we simply update the next virtual
-        // edge. This is the running wait time
-        // till we find a node sequential to the running virtual edge in subsequent iterations.
-        // Cases:
-        // [-----------------]
-        //      [---------------]
-        // <----------VE-------->
-
-        // [-----------------]
-        //     [-------]
-        // <--------VE------->
-
-        // [------------------]
-        //                 [----]
-        // <--------VE---------->
-        startTime =
-            Math.min(virtualCurrEdge.getStartTimeMillis(), lookaheadEdge.getStartTimeMillis());
-        endTime = Math.max(virtualCurrEdge.getEndTimeMillis(), lookaheadEdge.getEndTimeMillis());
+        // if lookahead edge is parallel in the series, then maxRunningEndTime can either the end
+        // time of the lookahead edge as below:
+        // [------------]
+        //       [---LA EDGE----]
+        // or it can be the running maxRunningEndTime itself:
+        // [-------------]
+        //   [-------]
+        maxRunningEndTime = Math.max(maxRunningEndTime, lookaheadEdge.getEndTimeMillis());
+        // the runningWaitTime is simply the longest span in the group of parallel spans.
         runningWaitTime = Math.max(runningWaitTime, lookaheadEdge.getDuration());
       }
     }
+    // to compensate for the remaining last iteration
     totalWait += runningWaitTime;
     return totalWait;
   }
 
-  private boolean areSequential(
-      NormalizedOutboundEdge currEdge, NormalizedOutboundEdge lookaheadEdge) {
-    return lookaheadEdge.getStartTimeMillis() >= currEdge.getEndTimeMillis();
+  private boolean isSequential(long endTimeMillis, NormalizedOutboundEdge lookaheadEdge) {
+    return lookaheadEdge.getStartTimeMillis() >= endTimeMillis;
   }
 
   private void enrichSpan(

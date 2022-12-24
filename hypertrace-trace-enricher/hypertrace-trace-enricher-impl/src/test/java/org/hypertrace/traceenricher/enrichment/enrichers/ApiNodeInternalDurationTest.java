@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+// todo: Add a test case for FOLLOWS_FROM
 public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
 
   // don't code to interface as we need to test internal methods of ApiNodeInternalDurationEnricher
