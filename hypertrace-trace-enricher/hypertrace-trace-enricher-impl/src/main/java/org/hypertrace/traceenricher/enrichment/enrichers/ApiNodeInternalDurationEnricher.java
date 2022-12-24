@@ -67,10 +67,10 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
                     NormalizedOutboundEdge.from(
                         event.getStartTimeMillis(), event.getEndTimeMillis()))
             .collect(Collectors.toList());
-    apiTraceGraph.getOutboundEdgesForApiNode(apiNode).stream()
-        .map(
-            edge -> NormalizedOutboundEdge.from(edge.getStartTimeMillis(), edge.getEndTimeMillis()))
-        .forEach(normalizedOutboundEdges::add);
+//    apiTraceGraph.getOutboundEdgesForApiNode(apiNode).stream()
+//        .map(
+//            edge -> NormalizedOutboundEdge.from(edge.getStartTimeMillis(), edge.getEndTimeMillis()))
+//        .forEach(normalizedOutboundEdges::add);
     return normalizedOutboundEdges;
   }
 
@@ -103,6 +103,7 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
     long totalWait = 0;
     long startTime = outboundEdges.get(0).getStartTimeMillis();
     long endTime = outboundEdges.get(0).getEndTimeMillis();
+    long runningWaitTime = outboundEdges.get(0).getDuration();
     for (int i = 0; i < outboundEdges.size() - 1; i++) {
       // we call it a virtual current edge because for parallel spans, we create an edge that spans
       // multiple spans
@@ -110,11 +111,12 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
       var lookaheadEdge = outboundEdges.get(i + 1);
       if (areSequential(virtualCurrEdge, lookaheadEdge)) {
         // if curr edge and lookahead edge are sequential, we simply update the total duration
-        totalWait += virtualCurrEdge.getDuration();
+        totalWait += runningWaitTime;
         // the new virtual edge becomes the lookahead edge. This virtual edge is also an actual
         // edge.
         startTime = lookaheadEdge.getStartTimeMillis();
         endTime = lookaheadEdge.getEndTimeMillis();
+        runningWaitTime = lookaheadEdge.getDuration();
       } else {
         // if curr edge and lookahead edge are parallel, then we simply update the next virtual
         // edge. This is the running wait time
@@ -134,9 +136,10 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
         startTime =
             Math.min(virtualCurrEdge.getStartTimeMillis(), lookaheadEdge.getStartTimeMillis());
         endTime = Math.max(virtualCurrEdge.getEndTimeMillis(), lookaheadEdge.getEndTimeMillis());
+        runningWaitTime = Math.max(runningWaitTime, lookaheadEdge.getDuration());
       }
     }
-    totalWait += (endTime - startTime);
+    totalWait += runningWaitTime;
     return totalWait;
   }
 

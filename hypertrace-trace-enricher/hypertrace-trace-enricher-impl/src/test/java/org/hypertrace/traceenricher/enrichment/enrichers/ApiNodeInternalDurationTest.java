@@ -75,26 +75,25 @@ public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
     // This Hotrod trace comprises four services: frontend, driver, customer and route.
     // there are 13 exit calls from frontend to [driver, customer and route]. Below are the start
     // and end times of each such EXIT call.
-    //    1613406996355, 1613406996653 -> HTTP HTTP GET /customer
-    //    1613406996653, 1613406996836 -> driver GRPC driver.DriverService/FindNearest
-    //    1613406996836, 1613406996898 -> route HTTP GET: /route
-    //    1613406996836, 1613406996902 -> route HTTP GET: /route
-    //    1613406996837, 1613406996909 -> route HTTP GET: /route
-    //    1613406996899, 1613406996951 -> route HTTP GET: /route
-    //    1613406996902, 1613406996932 -> route HTTP GET: /route
-    //    1613406996909, 1613406996960 -> route HTTP GET: /route
-    //    1613406996932, 1613406996979 -> route HTTP GET: /route
-    //    1613406996951, 1613406996996 -> route HTTP GET: /route
-    //    1613406996960, 1613406997014 -> route HTTP GET: /route
-    //    1613406996980, 1613406997033 -> route HTTP GET: /route
+    //    1613406996355, 1613406996653, 298ms  -> HTTP HTTP GET /customer
+    //    1613406996653, 1613406996836, 183ms  -> driver GRPC driver.DriverService/FindNearest
+    //    1613406996836, 1613406996898, 62ms -> route HTTP GET: /route
+    //    1613406996836, 1613406996902, 66ms  -> route HTTP GET: /route
+    //    1613406996837, 1613406996909, 72ms  -> route HTTP GET: /route
+    //    1613406996899, 1613406996951, 52ms -> route HTTP GET: /route
+    //    1613406996902, 1613406996932, 30ms  -> route HTTP GET: /route
+    //    1613406996909, 1613406996960, 51ms  -> route HTTP GET: /route
+    //    1613406996932, 1613406996979, 47ms -> route HTTP GET: /route
+    //    1613406996951, 1613406996996, 45ms  -> route HTTP GET: /route
+    //    1613406996960, 1613406997014, 54ms  -> route HTTP GET: /route
+    //    1613406996980, 1613406997033, 53ms  -> route HTTP GET: /route
     // calls to /customer and /FindNearest are sequential. The 10 calls to /route are made via a
     // thread pool and are parallel. So total wait
-    // time is: (1613406996653 - 1613406996355) + (1613406996836 - 1613406996653) + (1613406997033 -
-    // 1613406996836) = 678ms
+    // time is: 298ms + 183ms + 72ms = 678ms
     // total outbound edge duration = 678ms
     // entry event duration = 678ms
     Assertions.assertEquals(
-        0d,
+        125d,
         getMetricValue(
             entryApiBoundaryEvents.get(0), EnrichedSpanConstants.API_INTERNAL_DURATION, -1));
 
@@ -163,6 +162,6 @@ public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
     e3 =
         NormalizedOutboundEdge.from(
             now + Duration.ofMillis(92).toMillis(), now + Duration.ofMillis(98).toMillis());
-    Assertions.assertEquals(110, testCandidate.calculateTotalWaitTime(List.of(e1, e2, e3)));
+    Assertions.assertEquals(100, testCandidate.calculateTotalWaitTime(List.of(e1, e2, e3)));
   }
 }
