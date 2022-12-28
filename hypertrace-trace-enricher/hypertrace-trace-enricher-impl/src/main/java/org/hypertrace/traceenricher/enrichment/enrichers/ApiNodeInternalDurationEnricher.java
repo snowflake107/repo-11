@@ -13,6 +13,8 @@ import org.hypertrace.core.datamodel.StructuredTrace;
 import org.hypertrace.core.datamodel.shared.ApiNode;
 import org.hypertrace.core.datamodel.shared.HexUtils;
 import org.hypertrace.core.datamodel.shared.trace.AttributeValueCreator;
+import org.hypertrace.entity.constants.v1.BackendAttribute;
+import org.hypertrace.entity.service.constants.EntityConstants;
 import org.hypertrace.traceenricher.enrichedspan.constants.EnrichedSpanConstants;
 import org.hypertrace.traceenricher.enrichedspan.constants.utils.SpanUtils;
 import org.hypertrace.traceenricher.enrichment.AbstractTraceEnricher;
@@ -25,6 +27,8 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
 
   private static final Logger LOG = LoggerFactory.getLogger(ApiNodeInternalDurationEnricher.class);
 
+  private static final String BACKEND_PROTOCOL_ATTR = EntityConstants.getValue(BackendAttribute.BACKEND_ATTRIBUTE_PROTOCOL);
+
   @Override
   public void enrichTrace(StructuredTrace trace) {
 
@@ -36,7 +40,6 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
         Optional<Event> entryEventMaybe = apiNode.getEntryApiBoundaryEvent();
         entryEventMaybe.ifPresent(
             entryEvent -> {
-              // todo: Consider only those EXIT events that are CHILD_OF
               // we normalise all EXIT calls and Outbound edges to NormalizedOutboundEdge
               List<NormalizedOutboundEdge> normalizedOutboundEdges =
                   getNormalizedOutboundEdges(apiTraceGraph, apiNode);
@@ -61,21 +64,14 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
 
   private List<NormalizedOutboundEdge> getNormalizedOutboundEdges(
       ApiTraceGraph apiTraceGraph, ApiNode<Event> apiNode) {
-    List<NormalizedOutboundEdge> normalizedOutboundEdges =
-        apiNode.getExitApiBoundaryEvents().stream()
-            // https://hypertrace.slack.com/archives/C01BLU6M52N/p1672043695810389
-            .filter(event -> event.getEventRefList().get(0).getRefType() == EventRefType.CHILD_OF)
-            .map(
-                event ->
-                    NormalizedOutboundEdge.from(
-                        event.getStartTimeMillis(), event.getEndTimeMillis()))
-            .collect(Collectors.toList());
-    //    apiTraceGraph.getOutboundEdgesForApiNode(apiNode).stream()
-    //        .map(
-    //            edge -> NormalizedOutboundEdge.from(edge.getStartTimeMillis(),
-    // edge.getEndTimeMillis()))
-    //        .forEach(normalizedOutboundEdges::add);
-    return normalizedOutboundEdges;
+    return apiNode.getExitApiBoundaryEvents().stream()
+        // https://hypertrace.slack.com/archives/C01BLU6M52N/p1672043695810389
+        .filter(event -> event.getEventRefList().get(0).getRefType() == EventRefType.CHILD_OF)
+        .map(
+            event ->
+                NormalizedOutboundEdge.from(
+                    event.getStartTimeMillis(), event.getEndTimeMillis()))
+        .collect(Collectors.toList());
   }
 
   /*
