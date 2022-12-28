@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.hypertrace.core.datamodel.Event;
+import org.hypertrace.core.datamodel.EventRefType;
 import org.hypertrace.core.datamodel.MetricValue;
 import org.hypertrace.core.datamodel.StructuredTrace;
 import org.hypertrace.core.datamodel.shared.ApiNode;
@@ -62,6 +63,8 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
       ApiTraceGraph apiTraceGraph, ApiNode<Event> apiNode) {
     List<NormalizedOutboundEdge> normalizedOutboundEdges =
         apiNode.getExitApiBoundaryEvents().stream()
+            // https://hypertrace.slack.com/archives/C01BLU6M52N/p1672043695810389
+            .filter(event -> event.getEventRefList().get(0).getRefType() == EventRefType.CHILD_OF)
             .map(
                 event ->
                     NormalizedOutboundEdge.from(
@@ -76,7 +79,7 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
   }
 
   /*
-  The algo look at two edges at a time and check if they're sequential or parallel. For sequential edges, wait time is simply
+  The algo looks at two edges at a time and check if they're sequential or parallel. For sequential edges, wait time is simply
   the sum of the two. However, for parallel edges (in a group), the algorithm simply takes the longest span in the group and adds it to the
   total wait time.
   Examples:
@@ -85,15 +88,16 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
   //                                             [-------d3----]
   // Total wait time = d1 + d2 + d3. All spans are sequential.
 
-  // [----d1-----]
-  //                t1 [-------------------] t2
-  //                    t3 [----------] t4
-  //                          t5 [----------------] t6
-  //                                t7 [--------------------------] t8
+  // t'[---d1---]t''
+  //                t1 [--------d2-----------] t2
+  //                    t3 [----d3------] t4
+  //                          t5 [------------d4-------------] t6
+  //                                t7 [-------------d5-----------------------] t8
+  //internal duration ~ D - [(t'' - t') + (t8 - t7)] = D - (t'' - t) - (t8 - t7) = D - d1 - d5
   // In this case, the total wait time is d1 + max((t2 - t1), (t4 - t3), (t6 - t5), (t8 - t7)) = d1 + (t8 - t7)
   // Parallel requests are typically submitted to an executor service which then reads requests from a work queue and assigns them to workers based
   // on their availability. However, we must exclude any time the application spends on thread availability. We assume the best case: The ES has unlimited
-  // no of threads and it fires requests as soon as they're submitted. So the above diagram becomes:
+  // no of threads, and it fires requests as soon as they're submitted. So the above diagram becomes:
   // [----d1-----]
   //                t1 [-------------------] t2
   //                t3 [----------] t4
@@ -103,17 +107,21 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
    */
   @VisibleForTesting
   long calculateTotalWaitTime(List<NormalizedOutboundEdge> outboundEdges) {
-    long totalWait = 0;
+    // the result to return
+    long totalWaitTime = 0;
+    // the max end time of a span encountered till any point
+    // todo: consider downstream ENTRY spans if possible
     long maxRunningEndTime = outboundEdges.get(0).getEndTimeMillis();
     long runningWaitTime = outboundEdges.get(0).getDuration();
     for (int i = 0; i < outboundEdges.size() - 1; i++) {
       var lookaheadEdge = outboundEdges.get(i + 1);
-      if (isSequential(maxRunningEndTime, lookaheadEdge)) {
+      // if the lookahead edge is sequential in the series
+      if (isSequential(lookaheadEdge, maxRunningEndTime)) {
         // .....-----] maxRunningEndTime
         //             [----lookahead edge---]
         // if lookahead edge is sequential in the series, we add the running wait time to the total
         // wait.
-        totalWait += runningWaitTime;
+        totalWaitTime += runningWaitTime;
         // since it's sequential, maxRunningEndTime is simply the end time of the lookahead edge
         maxRunningEndTime = lookaheadEdge.getEndTimeMillis();
         // the new running wait time becomes the duration of this edge.
@@ -132,11 +140,11 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
       }
     }
     // to compensate for the remaining last iteration
-    totalWait += runningWaitTime;
-    return totalWait;
+    totalWaitTime += runningWaitTime;
+    return totalWaitTime;
   }
 
-  private boolean isSequential(long endTimeMillis, NormalizedOutboundEdge lookaheadEdge) {
+  private boolean isSequential(NormalizedOutboundEdge lookaheadEdge, long endTimeMillis) {
     return lookaheadEdge.getStartTimeMillis() >= endTimeMillis;
   }
 

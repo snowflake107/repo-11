@@ -16,7 +16,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-// todo: Add a test case for FOLLOWS_FROM
 public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
 
   // don't code to interface as we need to test internal methods of ApiNodeInternalDurationEnricher
@@ -78,6 +77,7 @@ public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
     // and end times of each such EXIT call.
     //    1613406996355, 1613406996653, 298ms  -> HTTP HTTP GET /customer
     //    1613406996653, 1613406996836, 183ms  -> driver GRPC driver.DriverService/FindNearest
+    // (FOLLOWS_FROM)
     //    1613406996836, 1613406996898, 62ms -> route HTTP GET: /route
     //    1613406996836, 1613406996902, 66ms  -> route HTTP GET: /route
     //    1613406996837, 1613406996909, 72ms  -> route HTTP GET: /route
@@ -89,12 +89,10 @@ public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
     //    1613406996960, 1613406997014, 54ms  -> route HTTP GET: /route
     //    1613406996980, 1613406997033, 53ms  -> route HTTP GET: /route
     // calls to /customer and /FindNearest are sequential. The 10 calls to /route are made via a
-    // thread pool and are parallel. So total wait
-    // time is: 298ms + 183ms + 72ms = 678ms
-    // total outbound edge duration = 678ms
-    // entry event duration = 678ms
+    // thread pool and are parallel. So total wait time is: 298ms + 72ms = 370ms
+    // internal time = 678 - 547 = 308ms
     Assertions.assertEquals(
-        125d,
+        308d,
         getMetricValue(
             entryApiBoundaryEvents.get(0), EnrichedSpanConstants.API_INTERNAL_DURATION, -1));
 
@@ -145,24 +143,15 @@ public class ApiNodeInternalDurationTest extends AbstractAttributeEnricherTest {
   public void testCustomTraces() {
     long now = System.currentTimeMillis();
     // all sequential
-    NormalizedOutboundEdge e1 =
-        NormalizedOutboundEdge.from(now, now + Duration.ofMillis(100).toMillis());
-    NormalizedOutboundEdge e2 =
-        NormalizedOutboundEdge.from(
-            now + Duration.ofMillis(102).toMillis(), now + Duration.ofMillis(110).toMillis());
-    NormalizedOutboundEdge e3 =
-        NormalizedOutboundEdge.from(
-            now + Duration.ofMillis(120).toMillis(), now + Duration.ofMillis(150).toMillis());
-    List<NormalizedOutboundEdge> outboundEdges = List.of(e1, e2, e3);
+    var e1 = NormalizedOutboundEdge.from(now, now + Duration.ofMillis(100).toMillis());
+    var e2 = NormalizedOutboundEdge.from(now + 102, now + 110);
+    var e3 = NormalizedOutboundEdge.from(now + 120, now + 150);
+    var outboundEdges = List.of(e1, e2, e3);
     Assertions.assertEquals(138, testCandidate.calculateTotalWaitTime(outboundEdges));
     // all parallel
     e1 = NormalizedOutboundEdge.from(now, now + Duration.ofMillis(100).toMillis());
-    e2 =
-        NormalizedOutboundEdge.from(
-            now + Duration.ofMillis(90).toMillis(), now + Duration.ofMillis(110).toMillis());
-    e3 =
-        NormalizedOutboundEdge.from(
-            now + Duration.ofMillis(92).toMillis(), now + Duration.ofMillis(98).toMillis());
+    e2 = NormalizedOutboundEdge.from(now + 90, now + 110);
+    e3 = NormalizedOutboundEdge.from(now + 92, now + 98);
     Assertions.assertEquals(100, testCandidate.calculateTotalWaitTime(List.of(e1, e2, e3)));
   }
 }

@@ -43,6 +43,7 @@ public class ApiTraceGraph {
   private final List<ApiNodeEventEdge> apiNodeEventEdgeList;
   // set of outbound edges for apiNode
   private final Map<Integer, Set<Integer>> apiNodeIdxToEdges;
+  // eventId -> index mapping
   private final Map<ByteBuffer, Integer> eventIdToIndexInTrace;
 
   // map of head event id of api node to index in api node list, helps in building edges between api
@@ -447,6 +448,7 @@ public class ApiTraceGraph {
     }
   }
 
+  // for each event, assigns a unique integer to it
   private void buildEventIdToIndexInTrace() {
     int count = 0;
     for (Event event : trace.getEventList()) {

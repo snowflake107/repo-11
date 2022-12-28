@@ -297,7 +297,7 @@
         {
           "trace_id": "AAAAAAAAAAA4Osx55TuE2g\u003d\u003d",
           "event_id": "ODrMeeU7hNo\u003d",
-          "ref_type": "CHILD_OF"
+          "ref_type": "FOLLOWS_FROM"
         }
       ],
       "enriched_attributes": {
