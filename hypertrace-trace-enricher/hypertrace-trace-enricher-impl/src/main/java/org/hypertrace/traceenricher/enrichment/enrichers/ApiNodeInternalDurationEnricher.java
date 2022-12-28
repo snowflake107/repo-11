@@ -32,7 +32,6 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
   @Override
   public void enrichTrace(StructuredTrace trace) {
 
-    try {
       ApiTraceGraph apiTraceGraph = ApiTraceGraphBuilder.buildGraph(trace);
       List<ApiNode<Event>> apiNodes = apiTraceGraph.getApiNodeList();
 
@@ -52,26 +51,9 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
               if (normalizedOutboundEdges.size() > 0) {
                 totalWaitTime = calculateTotalWaitTime(normalizedOutboundEdges);
               }
-              enrichSpan(entryEvent, entryApiBoundaryEventDuration, totalWaitTime);
+              enrichEvent(entryEvent, entryApiBoundaryEventDuration, totalWaitTime);
             });
       }
-    } catch (Exception e) {
-      LOG.error(
-          "Exception enriching trace: {} for internal duration",
-          HexUtils.getHex(trace.getTraceId()));
-    }
-  }
-
-  private List<NormalizedOutboundEdge> getNormalizedOutboundEdges(
-      ApiTraceGraph apiTraceGraph, ApiNode<Event> apiNode) {
-    return apiNode.getExitApiBoundaryEvents().stream()
-        // https://hypertrace.slack.com/archives/C01BLU6M52N/p1672043695810389
-        .filter(event -> event.getEventRefList().get(0).getRefType() == EventRefType.CHILD_OF)
-        .map(
-            event ->
-                NormalizedOutboundEdge.from(
-                    event.getStartTimeMillis(), event.getEndTimeMillis()))
-        .collect(Collectors.toList());
   }
 
   /*
@@ -140,11 +122,23 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
     return totalWaitTime;
   }
 
+  private List<NormalizedOutboundEdge> getNormalizedOutboundEdges(
+      ApiTraceGraph apiTraceGraph, ApiNode<Event> apiNode) {
+    return apiNode.getExitApiBoundaryEvents().stream()
+        // https://hypertrace.slack.com/archives/C01BLU6M52N/p1672043695810389
+        .filter(event -> event.getEventRefList().get(0).getRefType() == EventRefType.CHILD_OF)
+        .map(
+            event ->
+                NormalizedOutboundEdge.from(
+                    event.getStartTimeMillis(), event.getEndTimeMillis()))
+        .collect(Collectors.toList());
+  }
+
   private boolean isSequential(NormalizedOutboundEdge lookaheadEdge, long endTimeMillis) {
     return lookaheadEdge.getStartTimeMillis() >= endTimeMillis;
   }
 
-  private void enrichSpan(
+  private void enrichEvent(
       Event entryEvent, double entryApiBoundaryEventDuration, long totalWaitTime) {
     // enriched attributes
     entryEvent
