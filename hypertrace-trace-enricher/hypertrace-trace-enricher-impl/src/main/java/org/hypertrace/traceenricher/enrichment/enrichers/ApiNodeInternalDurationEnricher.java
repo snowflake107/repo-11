@@ -11,7 +11,6 @@ import org.hypertrace.core.datamodel.EventRefType;
 import org.hypertrace.core.datamodel.MetricValue;
 import org.hypertrace.core.datamodel.StructuredTrace;
 import org.hypertrace.core.datamodel.shared.ApiNode;
-import org.hypertrace.core.datamodel.shared.HexUtils;
 import org.hypertrace.core.datamodel.shared.trace.AttributeValueCreator;
 import org.hypertrace.entity.constants.v1.BackendAttribute;
 import org.hypertrace.entity.service.constants.EntityConstants;
@@ -27,33 +26,34 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
 
   private static final Logger LOG = LoggerFactory.getLogger(ApiNodeInternalDurationEnricher.class);
 
-  private static final String BACKEND_PROTOCOL_ATTR = EntityConstants.getValue(BackendAttribute.BACKEND_ATTRIBUTE_PROTOCOL);
+  private static final String BACKEND_PROTOCOL_ATTR =
+      EntityConstants.getValue(BackendAttribute.BACKEND_ATTRIBUTE_PROTOCOL);
 
   @Override
   public void enrichTrace(StructuredTrace trace) {
 
-      ApiTraceGraph apiTraceGraph = ApiTraceGraphBuilder.buildGraph(trace);
-      List<ApiNode<Event>> apiNodes = apiTraceGraph.getApiNodeList();
+    ApiTraceGraph apiTraceGraph = ApiTraceGraphBuilder.buildGraph(trace);
+    List<ApiNode<Event>> apiNodes = apiTraceGraph.getApiNodeList();
 
-      for (ApiNode<Event> apiNode : apiNodes) {
-        Optional<Event> entryEventMaybe = apiNode.getEntryApiBoundaryEvent();
-        entryEventMaybe.ifPresent(
-            entryEvent -> {
-              // we normalise all EXIT calls and Outbound edges to NormalizedOutboundEdge
-              List<NormalizedOutboundEdge> normalizedOutboundEdges =
-                  getNormalizedOutboundEdges(apiTraceGraph, apiNode);
-              // then sort these edges in ascending order of start times
-              normalizedOutboundEdges.sort(
-                  (o1, o2) -> (int) (o1.startTimeMillis - o2.startTimeMillis));
-              var entryApiBoundaryEventDuration =
-                  SpanUtils.getMetricValue(entryEvent, "Duration", -1);
-              var totalWaitTime = 0L;
-              if (normalizedOutboundEdges.size() > 0) {
-                totalWaitTime = calculateTotalWaitTime(normalizedOutboundEdges);
-              }
-              enrichEvent(entryEvent, entryApiBoundaryEventDuration, totalWaitTime);
-            });
-      }
+    for (ApiNode<Event> apiNode : apiNodes) {
+      Optional<Event> entryEventMaybe = apiNode.getEntryApiBoundaryEvent();
+      entryEventMaybe.ifPresent(
+          entryEvent -> {
+            // we normalise all EXIT calls and Outbound edges to NormalizedOutboundEdge
+            List<NormalizedOutboundEdge> normalizedOutboundEdges =
+                getNormalizedOutboundEdges(apiTraceGraph, apiNode);
+            // then sort these edges in ascending order of start times
+            normalizedOutboundEdges.sort(
+                (o1, o2) -> (int) (o1.startTimeMillis - o2.startTimeMillis));
+            var entryApiBoundaryEventDuration =
+                SpanUtils.getMetricValue(entryEvent, "Duration", -1);
+            var totalWaitTime = 0L;
+            if (normalizedOutboundEdges.size() > 0) {
+              totalWaitTime = calculateTotalWaitTime(normalizedOutboundEdges);
+            }
+            enrichEvent(entryEvent, entryApiBoundaryEventDuration, totalWaitTime);
+          });
+    }
   }
 
   /*
@@ -129,8 +129,7 @@ public class ApiNodeInternalDurationEnricher extends AbstractTraceEnricher {
         .filter(event -> event.getEventRefList().get(0).getRefType() == EventRefType.CHILD_OF)
         .map(
             event ->
-                NormalizedOutboundEdge.from(
-                    event.getStartTimeMillis(), event.getEndTimeMillis()))
+                NormalizedOutboundEdge.from(event.getStartTimeMillis(), event.getEndTimeMillis()))
         .collect(Collectors.toList());
   }
 
