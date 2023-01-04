@@ -72,6 +72,7 @@ public class EnrichedSpanUtils {
 
   private static final String SPAN_TYPE_ATTR =
       EnrichedSpanConstants.getValue(CommonAttribute.COMMON_ATTRIBUTE_SPAN_TYPE);
+
   private static final String API_BOUNDARY_TYPE_ATTR =
       EnrichedSpanConstants.getValue(Api.API_BOUNDARY_TYPE);
   private static final String TRACER_TYPE_ATTR =

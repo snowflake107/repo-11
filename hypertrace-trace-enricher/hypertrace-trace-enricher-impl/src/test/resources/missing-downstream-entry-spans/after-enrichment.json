@@ -58,7 +58,7 @@
             },
             "enriched.internal.duration.millis":{
               "value": {
-                "string": "4041.0"
+                "string": "37.0"
               },
               "binary_value":null,
               "value_list":null,
@@ -82,7 +82,7 @@
             },
             "enriched.internal.duration.millis":{
               "value": {
-                "double": 4041
+                "double": 37
               },
               "binary_value":null,
               "value_list":null,
