@@ -98,6 +98,9 @@
           "Duration": {
             "value": 678.0
           },
+          "DurationMicros": {
+            "value": 678102
+          },
           "enriched.internal.duration.millis": {
             "value": 678.0
           }
@@ -223,6 +226,9 @@
         "metric_map": {
           "Duration": {
             "value": 298.0
+          },
+          "DurationMicros": {
+            "value": 298715
           }
         }
       },
@@ -296,6 +302,9 @@
         "metric_map": {
           "Duration": {
             "value": 183.0
+          },
+          "DurationMicros": {
+            "value": 183426
           }
         }
       },

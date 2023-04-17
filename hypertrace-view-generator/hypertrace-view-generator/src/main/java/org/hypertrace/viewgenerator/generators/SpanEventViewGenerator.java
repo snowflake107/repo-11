@@ -2,6 +2,7 @@ package org.hypertrace.viewgenerator.generators;
 
 import static org.hypertrace.core.datamodel.shared.AvroBuilderCache.fastNewBuilder;
 import static org.hypertrace.core.datamodel.shared.SpanAttributeUtils.getStringAttribute;
+import static util.MathUtil.*;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -31,6 +32,8 @@ public class SpanEventViewGenerator extends BaseViewGenerator<SpanEventView> {
 
   private static final String EXCEPTION_COUNT_CONSTANT =
       EnrichedSpanConstants.getValue(ErrorMetrics.ERROR_METRICS_EXCEPTION_COUNT);
+
+  private static final String DURATION_MICROS_CONSTANT = "DurationMicros";
 
   @Override
   public String getViewName() {
@@ -227,6 +230,11 @@ public class SpanEventViewGenerator extends BaseViewGenerator<SpanEventView> {
     if (internal_duration != -1) {
       builder.setInternalDurationMillis((long) internal_duration);
     }
+
+    // duration_millis_double (high resolution duration)
+    double durationMillisDouble =
+        convertMicrosToMillis(getMetricValue(event, DURATION_MICROS_CONSTANT, -1));
+    builder.setDurationMillisDouble(roundToTwoDecimalPlaces(durationMillisDouble));
 
     // error count
     MetricValue errorMetric = event.getMetrics().getMetricMap().get(ERROR_COUNT_CONSTANT);

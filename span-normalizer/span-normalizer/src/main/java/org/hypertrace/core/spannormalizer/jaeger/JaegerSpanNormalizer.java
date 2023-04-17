@@ -318,6 +318,15 @@ public class JaegerSpanNormalizer {
             .build();
     metricMap.put("Duration", durationMetric);
 
+    long startTimeMicros = Timestamps.toMicros(jaegerSpan.getStartTime());
+    long endTimeMicros =
+        Timestamps.toMicros(Timestamps.add(jaegerSpan.getStartTime(), jaegerSpan.getDuration()));
+    MetricValue durationMicrosMetric =
+        fastNewBuilder(MetricValue.Builder.class)
+            .setValue((double) (endTimeMicros - startTimeMicros))
+            .build();
+    metricMap.put("DurationMicros", durationMicrosMetric);
+
     eventBuilder.setMetrics(fastNewBuilder(Metrics.Builder.class).setMetricMap(metricMap).build());
 
     return eventBuilder.build();

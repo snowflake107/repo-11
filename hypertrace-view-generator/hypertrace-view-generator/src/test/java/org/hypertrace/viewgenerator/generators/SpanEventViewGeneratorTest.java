@@ -19,12 +19,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.avro.file.DataFileReader;
 import org.apache.avro.specific.SpecificDatumReader;
-import org.hypertrace.core.datamodel.AttributeValue;
-import org.hypertrace.core.datamodel.Attributes;
-import org.hypertrace.core.datamodel.Entity;
-import org.hypertrace.core.datamodel.Event;
-import org.hypertrace.core.datamodel.Metrics;
-import org.hypertrace.core.datamodel.StructuredTrace;
+import org.hypertrace.core.datamodel.*;
 import org.hypertrace.core.datamodel.shared.trace.AttributeValueCreator;
 import org.hypertrace.core.span.constants.RawSpanConstants;
 import org.hypertrace.traceenricher.enrichedspan.constants.EnrichedSpanConstants;
@@ -330,6 +325,58 @@ public class SpanEventViewGeneratorTest {
     long internalDurationMillis = list.get(0).getInternalDurationMillis();
     Assertions.assertEquals(678, internalDurationMillis);
     Assertions.assertEquals(-1, list.get(1).getInternalDurationMillis());
+  }
+
+  @Test
+  public void testDurationMillisDouble() throws FileNotFoundException {
+    StructuredTrace.Builder traceBuilder = StructuredTrace.newBuilder();
+    traceBuilder
+        .setCustomerId("customer1")
+        .setTraceId(ByteBuffer.wrap("sample-trace-id".getBytes()))
+        .setEntityList(
+            Collections.singletonList(
+                Entity.newBuilder()
+                    .setCustomerId("customer1")
+                    .setEntityId("sample-entity-id")
+                    .setEntityName("sample-entity-name")
+                    .setEntityType("SERVICE")
+                    .build()))
+        .setEventList(
+            Collections.singletonList(
+                Event.newBuilder()
+                    .setCustomerId("customer1")
+                    .setEventId(ByteBuffer.wrap("sample-span-id".getBytes()))
+                    .setEventName("sample-span-name")
+                    .setEntityIdList(Collections.singletonList("sample-entity-id"))
+                    .setStartTimeMillis(System.currentTimeMillis())
+                    .setEndTimeMillis(System.currentTimeMillis())
+                    .setMetrics(
+                        Metrics.newBuilder()
+                            .setMetricMap(
+                                Map.of(
+                                    "DurationMicros",
+                                    MetricValue.newBuilder().setValue((double) 5).build()))
+                            .build())
+                    .setEnrichedAttributesBuilder(
+                        Attributes.newBuilder().setAttributeMap(Maps.newHashMap()))
+                    .build()))
+        .setMetrics(Metrics.newBuilder().setMetricMap(new HashMap<>()).build())
+        .setEntityEdgeList(new ArrayList<>())
+        .setEventEdgeList(new ArrayList<>())
+        .setEntityEventEdgeList(new ArrayList<>())
+        .setStartTimeMillis(System.currentTimeMillis())
+        .setEndTimeMillis(System.currentTimeMillis());
+
+    StructuredTrace trace = traceBuilder.build();
+    SpanEventViewGenerator spanEventViewGenerator = new SpanEventViewGenerator();
+    List<SpanEventView> list = spanEventViewGenerator.process(trace);
+    assertEquals(1, list.size());
+    Assertions.assertEquals(0, list.get(0).getDurationMillisDouble());
+
+    list = spanEventViewGenerator.process(TestUtilities.getSampleHotRodTrace());
+    Assertions.assertEquals(678.1, list.get(0).getDurationMillisDouble());
+    Assertions.assertEquals(298.71, list.get(1).getDurationMillisDouble());
+    Assertions.assertEquals(183.42, list.get(2).getDurationMillisDouble());
   }
 
   private Event createMockEventWithAttribute(String key, String value) {

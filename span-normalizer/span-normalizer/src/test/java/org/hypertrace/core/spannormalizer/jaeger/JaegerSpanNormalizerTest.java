@@ -2,6 +2,7 @@ package org.hypertrace.core.spannormalizer.jaeger;
 
 import static org.hypertrace.core.span.constants.v1.Http.HTTP_REQUEST_METHOD;
 
+import com.google.protobuf.Duration;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import io.jaegertracing.api_v2.JaegerSpanInternalModel;
@@ -11,11 +12,9 @@ import io.jaegertracing.api_v2.JaegerSpanInternalModel.Span;
 import io.micrometer.core.instrument.Timer;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import org.hypertrace.core.datamodel.AttributeValue;
+import org.hypertrace.core.datamodel.MetricValue;
 import org.hypertrace.core.datamodel.RawSpan;
 import org.hypertrace.core.serviceframework.config.ConfigClientFactory;
 import org.hypertrace.core.serviceframework.metrics.PlatformMetricsRegistry;
@@ -374,5 +373,50 @@ public class JaegerSpanNormalizerTest {
     Assertions.assertEquals("123456789", attributes.get("phonenum3").getValue());
     Assertions.assertFalse(attributes.containsKey(SpanNormalizerConstants.REDACTED_PII_TAGS_KEY));
     Assertions.assertFalse(attributes.containsKey(SpanNormalizerConstants.REDACTED_PCI_TAGS_KEY));
+  }
+
+  @Test
+  public void testMetricMapForDuration() throws Exception {
+    String tenantId = "tenant-" + random.nextLong();
+    Map<String, Object> configs = new HashMap<>(getCommonConfig());
+    configs.putAll(Map.of("processor", Map.of("defaultTenantId", tenantId)));
+    JaegerSpanNormalizer normalizer = JaegerSpanNormalizer.get(ConfigFactory.parseMap(configs));
+    Process process = Process.newBuilder().setServiceName("testService").build();
+
+    com.google.protobuf.Duration duration = Duration.newBuilder().setNanos(4000).build();
+    Span span = Span.newBuilder().setProcess(process).setDuration(duration).build();
+    RawSpan rawSpan = normalizer.convert(tenantId, span);
+    MetricValue metricValue = rawSpan.getEvent().getMetrics().getMetricMap().get("DurationMicros");
+    Assertions.assertEquals(4.0, metricValue.getValue());
+
+    duration = Duration.newBuilder().setSeconds(4L).setNanos(6230).build();
+    Double expectedDurationMicros =
+        ((duration.getSeconds() * 1.0 * 1e9) + duration.getNanos()) / 1000.0;
+    span = Span.newBuilder().setProcess(process).setDuration(duration).build();
+    rawSpan = normalizer.convert(tenantId, span);
+    metricValue = rawSpan.getEvent().getMetrics().getMetricMap().get("DurationMicros");
+    Double delta =
+        Math.abs(
+            metricValue.getValue()
+                - expectedDurationMicros); // Precision loss of less than a microsecond is OK
+    Assertions.assertTrue(delta < 1);
+
+    duration = Duration.newBuilder().setSeconds(253402300799L).setNanos(999999999).build();
+    expectedDurationMicros = ((duration.getSeconds() * 1.0 * 1e9) + duration.getNanos()) / 1000.0;
+    span = Span.newBuilder().setProcess(process).setDuration(duration).build();
+    rawSpan = normalizer.convert(tenantId, span);
+    metricValue = rawSpan.getEvent().getMetrics().getMetricMap().get("DurationMicros");
+    delta = Math.abs(metricValue.getValue() - expectedDurationMicros);
+    Assertions.assertTrue(delta < 1);
+
+    duration = Duration.newBuilder().setSeconds(0).setNanos(200000000).build();
+    expectedDurationMicros = ((duration.getSeconds() * 1.0 * 1e9) + duration.getNanos()) / 1000.0;
+    span = Span.newBuilder().setProcess(process).setDuration(duration).build();
+    rawSpan = normalizer.convert(tenantId, span);
+    metricValue = rawSpan.getEvent().getMetrics().getMetricMap().get("DurationMicros");
+    delta = Math.abs(metricValue.getValue() - expectedDurationMicros);
+    Assertions.assertTrue(delta < 1);
+    Assertions.assertEquals(0, span.getDuration().getSeconds());
+    Assertions.assertEquals(200000000, span.getDuration().getNanos());
   }
 }
