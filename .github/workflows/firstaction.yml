@@ -34,9 +34,9 @@ jobs:
   weather:
     runs-on: ubuntu-latest
     env:
-      location: '28.550,-81.40'
+      location: '37.8136,144.9631'
       lang: en
-      units: us
+      units: au
       exclude: 'minutely,hourly,daily,alerts,flags'
       dark_sky_secret: ${{ secrets.dark_sky }}
     steps: 
