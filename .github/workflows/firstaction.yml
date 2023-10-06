@@ -4,17 +4,17 @@ name: Hello Actions
 
 # Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "master" branch
+  # Triggers the workflow on push or pull request events but only for the "damo-maker-patch-4" branch
   push:
     branches: 
-      - master
+      - damo-maker-patch-4
   pull_request:
     types: [closed]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 env:
-  name: Damojay
+  name: DamoJay
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
@@ -27,7 +27,29 @@ jobs:
     steps:
       # Runs a single command using the runners shell
       - name: Run a one-line script
-        run: echo Hello $name!
+        run: |
+          echo Hello $name!
+          echo Actor: ${{ github.actor }}
+          echo Committed By:: ${{ github.event.commits[0].author.name }}
+  weather:
+    runs-on: ubuntu-latest
+    env:
+      location: '28.550,-81.40'
+      lang: en
+      units: us
+      exclude: 'minutely,hourly,daily,alerts,flags'
+      dark_sky_secret: ${{ secrets.dark_sky }}
+    steps: 
+      - name: Current Weather
+        run: -curl -s --url https://api.darksky.net/forecast/$dark_sky_secret/$location?lang=$lang&units=$units&exclude=$exclude
+        
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "GITHUB_CONTEXT" 
+
 
   # This workflow contains a single job called "build"
   pull_requests_only:
