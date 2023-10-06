@@ -27,18 +27,7 @@ jobs:
     steps:
       # Runs a single command using the runners shell
       - name: Run a one-line script
-        run: |
-          echo Hello $name!
-          echo Actor: ${{ github.actor }}
-          echo Committed By:: S{{ github.event.commits[0).author.name }}
-
-  dump:
-    runs-on: ubuntu-latest
-    steps:
-      - env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-        run: echo "GITHUB_CONTEXT" 
-
+        run: echo Hello $name!
 
   # This workflow contains a single job called "build"
   pull_requests_only:
