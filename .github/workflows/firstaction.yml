@@ -4,62 +4,30 @@ name: Hello Actions
 
 # Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "damo-maker-patch-5" branch
+  # Triggers the workflow on push or pull request events but only for the "master" branch
   push:
     branches: 
-      - damo-maker-patch-5
+      - master
   pull_request:
     types: [closed]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 env:
-  name: DamoJay
+  name: Damojay
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
   build:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
-    name: Build Project
+    env:
+      name: Damo
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Runs a single command using the runners shell
-    - uses: actions/checkout@v1
-    - uses: actions/setup-node@v1
-      with: 
-        node-version: '12.x'
-    - name: install
-      run: npm install
-    - name: build
-      run: npm run build
-    - name: deploy
-      uses: demurgos/ga-deploy-git@v1
-      with:
-        accessToken: ${{ secrets.access_token }}
-        srcDir: build
-        destBranch: gh-pages
-
-    
-  weather:
-    runs-on: ubuntu-latest
-    env:
-      location: '37.8136,144.9631'
-      lang: en
-      units: au
-      exclude: 'minutely,hourly,daily,alerts,flags'
-      dark_sky_secret: ${{ secrets.dark_sky }}
-    steps: 
-      - name: Current Weather
-        run: curl -s --url https://api.darksky.net/forecast/$dark_sky_secret/$location?lang=$lang&units=$units&exclude=$exclude
-
-  dump:
-    runs-on: ubuntu-latest
-    steps:
-      - env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-        run: echo "GITHUB_CONTEXT" 
-
+      - name: Run a one-line script
+        run: echo Hello $name!
 
   # This workflow contains a single job called "build"
   pull_requests_only:
