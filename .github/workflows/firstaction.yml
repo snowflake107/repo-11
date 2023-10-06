@@ -34,10 +34,10 @@ jobs:
 
   dump:
     runs-on: ubuntu-latest
-      steps:
-        - env:
-            GITHUB_CONTEXT: ${{ toJson(github) }}
-          run: echo "GITHUB_CONTEXT" 
+    steps:
+      - env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "GITHUB_CONTEXT" 
 
 
   # This workflow contains a single job called "build"
