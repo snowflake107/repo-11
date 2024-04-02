@@ -2,20 +2,19 @@
 #define THREAD_HXX_
 
 #if USE_CLICKHOUSE_THREADS
-    #include <Common/ThreadPool.h>
-    namespace nuraft
-    {
-        using thread = ThreadFromGlobalPool;
-    }
+#include <Common/ThreadPool.h>
 #else
-    #include <thread>
-    namespace nuraft
-    {
-        using thread = ThreadFromGlobalPool;
-    }
+#include <thread>
 #endif
 
-
+namespace nuraft
+{
+#if USE_CLICKHOUSE_THREADS
+    using thread = ThreadFromGlobalPool;
+#else
+    using thread = std::thread;
+#endif
+}
 
 
 #endif // THREAD_HXX_
