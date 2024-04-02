@@ -147,7 +147,7 @@ int make_group_test() {
     return 0;
 }
 
-int leader_election_test() {
+int leader_election_test(bool crc_on_entire_message) {
     reset_log_files();
 
     std::string s1_addr = "tcp://localhost:20010";
@@ -158,6 +158,9 @@ int leader_election_test() {
     RaftAsioPkg* s2 = new RaftAsioPkg(2, s2_addr);
     RaftAsioPkg* s3 = new RaftAsioPkg(3, s3_addr);
     std::vector<RaftAsioPkg*> pkgs = {s1, s2, s3};
+    for (auto& pp: pkgs) {
+        pp->setCrcOnEntireMessage(crc_on_entire_message);
+    }
 
     _msg("launching asio-raft servers\n");
     CHK_Z( launch_servers(pkgs, false) );
@@ -279,6 +282,14 @@ std::string test_write_req_meta( std::atomic<size_t>* count,
         _msg("%10s %s %20s\n", "write req", key, value.c_str());
     }
 
+    // `req_` should be given, while `resp_` should be null.
+    auto chk_req_resp = [&]() {
+        CHK_NONNULL(params.req_);
+        CHK_NULL(params.resp_);
+        return 0;
+    };
+    if (chk_req_resp() != 0) return std::string();
+
     if (count) (*count)++;
     return value;
 }
@@ -299,6 +310,14 @@ bool test_read_req_meta( std::atomic<size_t>* count,
     if (dbg_print_ctx) {
         _msg("%10s %s %20s\n", "read req", key, meta.c_str());
     }
+
+    // `req_` should be given, while `resp_` should be null.
+    auto chk_req_resp = [&]() {
+        CHK_NONNULL(params.req_);
+        CHK_NULL(params.resp_);
+        return 0;
+    };
+    if (chk_req_resp() != 0) return false;
 
     std::string META;
     {   std::lock_guard<std::mutex> l(req_map_lock);
@@ -332,6 +351,14 @@ std::string test_write_resp_meta( std::atomic<size_t>* count,
         _msg("%10s %s %20s\n", "write resp", key, value.c_str());
     }
 
+    // `req_` and `resp_` should be given.
+    auto chk_req_resp = [&]() {
+        CHK_NONNULL(params.req_);
+        CHK_NONNULL(params.resp_);
+        return 0;
+    };
+    if (chk_req_resp() != 0) return std::string();
+
     if (count) (*count)++;
     return value;
 }
@@ -352,6 +379,14 @@ bool test_read_resp_meta( std::atomic<size_t>* count,
         _msg("%10s %s %20s\n", "read resp", key, meta.c_str());
     }
 
+    // `req_` and `resp_` should be given.
+    auto chk_req_resp = [&]() {
+        CHK_NONNULL(params.req_);
+        CHK_NONNULL(params.resp_);
+        return 0;
+    };
+    if (chk_req_resp() != 0) return false;
+
     std::string META;
     {   std::lock_guard<std::mutex> l(resp_map_lock);
         META = resp_map[key];
@@ -364,7 +399,7 @@ bool test_read_resp_meta( std::atomic<size_t>* count,
     return true;
 }
 
-int message_meta_test() {
+int message_meta_test(bool crc_on_entire_message) {
     reset_log_files();
 
     std::string s1_addr = "127.0.0.1:20010";
@@ -399,6 +434,8 @@ int message_meta_test() {
                          &write_resp_cb_count,
                          std::placeholders::_1 ),
               true );
+
+        rr->setCrcOnEntireMessage(crc_on_entire_message);
     }
     CHK_Z( launch_servers(pkgs, false) );
 
@@ -1293,6 +1330,9 @@ int leadership_transfer_test() {
     s3->stopAsio();
     delete s3;
 
+    // Wait enough time so that S1 can detect S3's failure.
+    TestSuite::sleep_sec(2, "shutdown S3 and wait");
+
     // Set the parameter to enable transfer (S1).
     s1->raftServer->update_params(params);
 
@@ -1300,7 +1340,7 @@ int leadership_transfer_test() {
     CHK_EQ( raft_server::PrioritySetResult::SET, s1->raftServer->set_priority(2, 100) );
 
     // Due to S3, transfer shouldn't happen.
-    TestSuite::sleep_sec(2, "shutdown S3, set priority of S2, and wait");
+    TestSuite::sleep_sec(2, "set priority of S2 and wait");
     CHK_TRUE( s1->raftServer->is_leader() );
 
     s3 = new RaftAsioPkg(3, s3_addr);
@@ -2714,7 +2754,8 @@ int main(int argc, char** argv) {
                make_group_test );
 
     ts.doTest( "leader election test",
-               leader_election_test );
+               leader_election_test,
+               TestRange<bool>( {false, true} ) );
 
 #if !SSL_LIBRARY_NOT_FOUND && (defined(__linux__) || defined(__APPLE__))
     ts.doTest( "ssl test",
@@ -2722,7 +2763,8 @@ int main(int argc, char** argv) {
 #endif
 
     ts.doTest( "message meta test",
-               message_meta_test );
+               message_meta_test,
+               TestRange<bool>( {false, true} ) );
 
     ts.doTest( "empty meta test",
                empty_meta_test,

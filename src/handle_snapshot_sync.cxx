@@ -239,7 +239,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
     return req;
 }
 
-ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req) {
+ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req, std::unique_lock<std::recursive_mutex>& guard) {
     if (req.get_term() == state_->get_term() && !catching_up_) {
         if (role_ == srv_role::candidate) {
             become_follower();
@@ -299,7 +299,7 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req) {
         return resp;
     }
 
-    if (handle_snapshot_sync_req(*sync_req)) {
+    if (handle_snapshot_sync_req(*sync_req, guard)) {
         if (sync_req->get_snapshot().get_type() == snapshot::raw_binary) {
             // LCOV_EXCL_START
             // Raw binary: add received byte to offset.
@@ -456,7 +456,7 @@ void raft_server::handle_install_snapshot_resp_new_member(resp_msg& resp) {
     sync_log_to_new_srv(srv_to_join_->get_next_log_idx());
 }
 
-bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
+bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_lock<std::recursive_mutex>& guard) {
  const auto handle_install_failure = [&]
  {
     ctx_->state_mgr_->system_exit(raft_err::N13_snapshot_install_failed);
@@ -526,6 +526,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
     if (is_last_obj) {
         // let's pause committing in backgroud so it doesn't access logs
         // while they are being compacted
+        guard.unlock();
         pause_state_machine_exeuction();
 
         size_t wait_count = 0;
@@ -533,6 +534,8 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
             p_in("waiting for state machine pause before applying snapshot: count %zu",
                  ++wait_count);
         }
+        
+        guard.lock();
 
         struct ExecAutoResume {
             explicit ExecAutoResume(std::function<void()> func) : clean_func_(func) {}

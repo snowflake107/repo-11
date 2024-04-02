@@ -284,7 +284,7 @@ int add_node_error_cases_test() {
     std::string s2_addr = "S2";
     std::string s3_addr = "S3";
     // Hard to make a server really non-existent as to fail an rpc req with a FakeNetwork
-    // you need to actually have a recipient. So we simulate a nonexistent server with an 
+    // you need to actually have a recipient. So we simulate a nonexistent server with an
     // offline one
     std::string nonexistent_addr = "nonexistent";
 
@@ -873,6 +873,9 @@ int leader_election_basic_test() {
     CHK_Z( launch_servers( pkgs ) );
     CHK_Z( make_group( pkgs ) );
 
+    // Keep the last log index.
+    uint64_t last_idx = s1.raftServer->get_last_log_idx();
+
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
     s2.fTimer->invoke( timer_task_type::election_timer );
@@ -897,6 +900,18 @@ int leader_election_basic_test() {
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // S3's log index at becoming leader should be the next index of
+    // the last one.
+    TestSuite::Msg mm;
+    uint64_t idx_at_leader = s3.raftServer->get_log_idx_at_becoming_leader();
+    mm << "last index " << last_idx << ", log index at becoming leader "
+       << idx_at_leader << std::endl;
+    CHK_EQ( last_idx + 1, idx_at_leader );
+
+    // S1 and S2's log index should be 0.
+    CHK_Z( s1.raftServer->get_log_idx_at_becoming_leader() );
+    CHK_Z( s2.raftServer->get_log_idx_at_becoming_leader() );
 
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
@@ -1421,7 +1436,34 @@ int leadership_takeover_by_request_test() {
     // Request leadership by the current leader, should fail.
     CHK_FALSE( s1.raftServer->request_leadership() );
 
-    // S3 requests the leadership from S1.
+    // Set callback function to refuse resignation.
+    bool refuse_request = true;
+    s1.ctx->set_cb_func([&](cb_func::Type t, cb_func::Param* p) -> cb_func::ReturnCode {
+        if (t != cb_func::Type::ResignationFromLeader) {
+            return cb_default(t, p);
+        }
+        if (refuse_request) {
+            return cb_func::ReturnCode::ReturnNull;
+        }
+        return cb_func::ReturnCode::Ok;
+    });
+
+    // S3 requests the leadership from S1, and it is supposed to be declined.
+    s1.dbgLog(" --- request leadership ---");
+    CHK_TRUE( s3.raftServer->request_leadership() );
+    // Send request.
+    s3.fNet->execReqResp();
+
+    // Send heartbeat.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+
+    // S1 should still be the leader.
+    CHK_TRUE( s1.raftServer->is_leader() );
+
+    // S3 requests the leadership from S1. Now it should succeed.
+    refuse_request = false;
     s1.dbgLog(" --- request leadership ---");
     CHK_TRUE( s3.raftServer->request_leadership() );
     // Send request.
@@ -2011,6 +2053,9 @@ int snapshot_basic_test() {
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
     CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
 
+    // There shouldn't be any open snapshot ctx.
+    CHK_Z( s1.getTestSm()->getNumOpenedUserCtxs() );
+
     print_stats(pkgs);
 
     s1.raftServer->shutdown();
@@ -2109,6 +2154,206 @@ int snapshot_manual_creation_test() {
 
     CHK_EQ( committed_index, s3.getTestSm()->last_snapshot()->get_last_log_idx() );
 
+    // There shouldn't be any open snapshot ctx.
+    CHK_Z( s1.getTestSm()->getNumOpenedUserCtxs() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    fake_executer_killer(&exec_args);
+    hh.join();
+    CHK_Z( hh.getResult() );
+
+    f_base->destroy();
+
+    return 0;
+}
+
+int snapshot_creation_index_inversion_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Append a message using separate thread.
+    ExecArgs exec_args(&s1);
+    TestSuite::ThreadHolder hh(&exec_args, fake_executer, fake_executer_killer);
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    const size_t NUM = 5;
+
+    // Set a callback function to manually create snapshot,
+    // right before the automatic snapshot creation.
+    bool manual_snp_creation_succ = false;
+    s1.ctx->set_cb_func([&](cb_func::Type t, cb_func::Param* p) -> cb_func::ReturnCode {
+        // At the beginning of an automatic snapshot creation,
+        // create a manual snapshot, to mimic index inversion.
+        if (t != cb_func::Type::SnapshotCreationBegin) {
+            return cb_default(t, p);
+        }
+
+        // This function should be invoked only once, to avoid
+        // infinite recursive call.
+        static bool invoked = false;
+        if (!invoked) {
+            invoked = true;
+            ulong log_idx = s1.raftServer->create_snapshot();
+            manual_snp_creation_succ = (log_idx > 0);
+        }
+        return cb_func::ReturnCode::Ok;
+    });
+
+    // Append messages asynchronously.
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+
+        handlers.push_back(ret);
+    }
+
+    // NOTE: Send it to S2 only, S3 will be lagging behind.
+    s1.fNet->execReqResp("S2"); // replication.
+    s1.fNet->execReqResp("S2"); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // One more time to make sure.
+    s1.fNet->execReqResp("S2");
+    s1.fNet->execReqResp("S2");
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Snapshot creation should have happened only once, by manual creation.
+    CHK_TRUE(manual_snp_creation_succ);
+    CHK_EQ(1, s1.getTestSm()->getNumSnapshotCreations());
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    fake_executer_killer(&exec_args);
+    hh.join();
+    CHK_Z( hh.getResult() );
+
+    f_base->destroy();
+
+    return 0;
+}
+
+int snapshot_scheduled_creation_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Append a message using separate thread.
+    ExecArgs exec_args(&s1);
+    TestSuite::ThreadHolder hh(&exec_args, fake_executer, fake_executer_killer);
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    const size_t NUM = 5;
+
+    // Append messages asynchronously.
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii = 0; ii < NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+
+        handlers.push_back(ret);
+    }
+
+    s1.fNet->execReqResp(); // replication.
+    s1.fNet->execReqResp(); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // One more time to make sure.
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Manually create a snapshot.
+    uint64_t log_idx = s1.raftServer->create_snapshot();
+    CHK_GT(log_idx, 0);
+
+    // Schedule snapshot creation and wait 500ms, there shouldn't be any progress.
+    auto sched_ret = s1.raftServer->schedule_snapshot_creation();
+    TestSuite::sleep_ms(500, "wait for async snapshot creation");
+    CHK_FALSE(sched_ret->has_result());
+
+    uint64_t last_idx = s1.raftServer->get_last_log_idx();
+
+    // Append more messages asynchronously.
+    for (size_t ii = NUM; ii < NUM * 2; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+
+        handlers.push_back(ret);
+    }
+
+    s1.fNet->execReqResp(); // replication.
+    s1.fNet->execReqResp(); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // One more time to make sure.
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Now it should have the result.
+    CHK_TRUE(sched_ret->has_result());
+    CHK_EQ(last_idx + 1, sched_ret->get());
+
     print_stats(pkgs);
 
     s1.raftServer->shutdown();
@@ -2200,6 +2445,75 @@ int snapshot_randomized_creation_test() {
     fake_executer_killer(&exec_args);
     hh.join();
     CHK_Z( hh.getResult() );
+
+    f_base->destroy();
+
+    return 0;
+}
+
+int snapshot_close_for_removed_peer_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        // Set quorum to 1 so as to make S1 commits data locally.
+        param.custom_commit_quorum_size_ = 1;
+        param.custom_election_quorum_size_ = 1;
+        pp->raftServer->update_params(param);
+    }
+
+    const size_t NUM = 10;
+
+    // Append messages asynchronously.
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+
+        handlers.push_back(ret);
+    }
+    // Wait for bg commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Make req to S2 failed.
+    s1.fNet->makeReqFailAll("S2");
+
+    // Heartbeat, this will initiate snapshot transfer to S2.
+    s1.fTimer->invoke(timer_task_type::heartbeat_timer);
+    s1.fNet->execReqResp("S2");
+
+    // Now remove S2.
+    s1.raftServer->remove_srv(2);
+
+    // Heartbeat, and make request fail.
+    s1.fTimer->invoke(timer_task_type::heartbeat_timer);
+    s1.fNet->makeReqFailAll("S2");
+
+    // After S2 is removed, the snapshot ctx should be destroyed.
+    CHK_Z( s1.getTestSm()->getNumOpenedUserCtxs() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
 
     f_base->destroy();
 
@@ -3201,8 +3515,17 @@ int main(int argc, char** argv) {
     ts.doTest( "snapshot manual creation test",
                snapshot_manual_creation_test );
 
+    ts.doTest( "snapshot creation index inversion test",
+               snapshot_creation_index_inversion_test );
+
+    ts.doTest( "snapshot scheduled creation test",
+               snapshot_scheduled_creation_test );
+
     ts.doTest( "snapshot randomized creation test",
                snapshot_randomized_creation_test );
+
+    ts.doTest( "snapshot close for removed peer test",
+               snapshot_close_for_removed_peer_test );
 
     ts.doTest( "join empty node test",
                join_empty_node_test );

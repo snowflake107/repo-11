@@ -17,7 +17,9 @@ limitations under the License.
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <system_error>
 
@@ -25,6 +27,10 @@ limitations under the License.
 typedef struct ssl_ctx_st SSL_CTX;
 
 namespace nuraft {
+
+class buffer;
+class req_msg;
+class resp_msg;
 
 /**
  * Parameters for meta callback functions in `options`.
@@ -36,31 +42,59 @@ struct asio_service_meta_cb_params {
                                 uint64_t t = 0,
                                 uint64_t lt = 0,
                                 uint64_t li = 0,
-                                uint64_t ci = 0)
+                                uint64_t ci = 0,
+                                req_msg* req = nullptr,
+                                resp_msg* resp = nullptr)
         : msg_type_(m), src_id_(s), dst_id_(d)
         , term_(t), log_term_(lt), log_idx_(li), commit_idx_(ci)
+        , req_(req), resp_(resp)
         {}
 
-    // Type of request.
+    /**
+     * Type of request.
+     */
     int msg_type_;
 
-    // Source server ID that sends request.
+    /**
+     * Source server ID that sends request.
+     */
     int src_id_;
 
-    // Destination server ID that sends response.
+    /**
+     * Destination server ID that sends response.
+     */
     int dst_id_;
 
-    // Term of source server.
+    /**
+     * Term of source server.
+     */
     uint64_t term_;
 
-    // Term of the corresponding log.
+    /**
+     * Term of the corresponding log.
+     */
     uint64_t log_term_;
 
-    // Log index number.
+    /**
+     * Log index number.
+     */
     uint64_t log_idx_;
 
-    // Last committed index number.
+    /**
+     * Last committed index number.
+     */
     uint64_t commit_idx_;
+
+    /**
+     * Pointer to request instance.
+     */
+    req_msg* req_;
+
+    /**
+     * Pointer to response instance.
+     * Will be given for `read_resp_meta_` and `write_resp_meta_` only.
+     */
+    resp_msg* resp_;
 };
 
 /**
@@ -88,6 +122,9 @@ struct asio_service_options {
         , verify_sn_(nullptr)
         , custom_resolver_(nullptr)
         , replicate_log_timestamp_(false)
+        , crc_on_entire_message_(false)
+        , crc_on_payload_(false)
+        , corrupted_msg_handler_(nullptr)
         {}
 
     /**
@@ -177,7 +214,17 @@ struct asio_service_options {
     // call (SSL_CTX_set_default_verify_paths)
     bool load_default_ca_file_;
 
-    // If set, will use SSL_CTX povided by callback
+    /**
+     * Callback function that provides pre-configured SSL_CTX.
+     * Asio takes ownership of the provided object
+     * and disposes it later with SSL_CTX_free.
+     *
+     * No configuration changes are applied to the provided context,
+     * so callback must return properly configured and operational SSL_CTX.
+     *
+     * Note that it might be unsafe to share SSL_CTX with other threads,
+     * consult with your OpenSSL library documentation/guidelines.
+     */
     std::function<SSL_CTX* (void)> ssl_context_provider_server_;
     std::function<SSL_CTX* (void)> ssl_context_provider_client_;
 
@@ -201,10 +248,38 @@ struct asio_service_options {
      * restore the timestamp when it reads log entries.
      *
      * This feature is not backward compatible. To enable this feature, there
-     * should not be any member running with old version before supprting
+     * should not be any member running with old version before supporting
      * this flag.
      */
     bool replicate_log_timestamp_;
+
+    /**
+     * If `true`, NuRaft will validate the entire message with CRC.
+     * Otherwise, it validates the header part only.
+     */
+    bool crc_on_entire_message_;
+
+    /**
+     * If `true`, each log entry will contain a CRC checksum of the entry's
+     * payload.
+     *
+     * To support this feature, the log store implementation should be able to
+     * store and retrieve the CRC checksum when it reads log entries.
+     *
+     * This feature is not backward compatible. To enable this feature, there
+     * should not be any member running with the old version before supporting
+     * this flag.
+     */
+    bool crc_on_payload_;
+
+    /**
+     * Callback function that will be invoked when the received message is corrupted.
+     * The first `buffer` contains the raw binary of message header,
+     * and the second `buffer` contains the user payload including metadata,
+     * if it is not null.
+     */
+    std::function< void( std::shared_ptr<buffer>,
+                         std::shared_ptr<buffer> ) > corrupted_msg_handler_;
 };
 
 }

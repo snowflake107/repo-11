@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef _LOG_STORE_HXX_
 #define _LOG_STORE_HXX_
 
+#include "async.hxx"
 #include "basic_types.hxx"
 #include "buffer.hxx"
 #include "log_entry.hxx"
@@ -45,7 +46,7 @@ public:
     /**
      * The start index of the log store, at the very beginning, it must be 1.
      * However, after some compact actions, this could be anything equal to or
-     * greater than or equal to one
+     * greater than one
      */
     virtual ulong start_index() const = 0;
 
@@ -167,6 +168,31 @@ public:
      * @return `true` on success.
      */
     virtual bool compact(ulong last_log_index) = 0;
+
+    /**
+     * Compact the log store by purging all log entries,
+     * including the given log index number.
+     *
+     * Unlike `compact`, this API allows to execute the log compaction in background
+     * asynchronously, aiming at reducing the client-facing latency caused by the
+     * log compaction.
+     *
+     * This function call may return immediately, but after this function
+     * call, following `start_index` should return `last_log_index + 1` even
+     * though the log compaction is still in progress. In the meantime, the
+     * actual job incurring disk IO can run in background. Once the job is done,
+     * `when_done` should be invoked.
+     *
+     * @param last_log_index Log index number that will be purged up to (inclusive).
+     * @param when_done Callback function that will be called after
+     *                  the log compaction is done.
+     */
+    virtual void compact_async(ulong last_log_index,
+                               const async_result<bool>::handler_type& when_done) {
+        bool rc = compact(last_log_index);
+        ptr<std::exception> exp(nullptr);
+        when_done(rc, exp);
+    }
 
     /**
      * Synchronously flush all log entries in this log store to the backing storage

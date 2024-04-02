@@ -107,15 +107,25 @@ void raft_server::request_prevote() {
         // 2-node cluster's pre-vote failed due to offline node.
         p_wn("2-node cluster's pre-vote is failing long time, "
              "adjust quorum to 1");
-        ptr<raft_params> clone = cs_new<raft_params>(*params);
-        clone->custom_commit_quorum_size_ = 1;
-        clone->custom_election_quorum_size_ = 1;
-        ctx_->set_params(clone);
+
+        cb_func::Param cb_param(id_, leader_, -1);
+        CbReturnCode rc =
+            ctx_->cb_func_.call(cb_func::AutoAdjustQuorum, &cb_param);
+        if (rc == CbReturnCode::ReturnNull) {
+            // Callback function rejected the adjustment.
+            p_wn("quorum size adjustment was declined by callback");
+        } else {
+            ptr<raft_params> clone = cs_new<raft_params>(*params);
+            clone->custom_commit_quorum_size_ = 1;
+            clone->custom_election_quorum_size_ = 1;
+            ctx_->set_params(clone);
+        }
     }
 
     hb_alive_ = false;
     leader_ = -1;
     role_ = srv_role::candidate;
+    index_at_becoming_leader_ = 0;
     pre_vote_.reset(state_->get_term());
     // Count for myself.
     pre_vote_.dead_++;
@@ -199,13 +209,15 @@ void raft_server::initiate_vote(bool force_vote) {
     if ( my_priority_ >= target_priority_ ||
          force_vote ||
          check_cond_for_zp_election() ||
-         get_quorum_for_election() == 0 ) {
+         ( get_quorum_for_election() == 0 &&
+           my_priority_ > 0 ) ) {
         // Request vote when
         //  1) my priority satisfies the target, OR
         //  2) I'm the only node in the group.
         state_->inc_term();
         state_->set_voted_for(-1);
         role_ = srv_role::candidate;
+        index_at_becoming_leader_ = 0;
         votes_granted_ = 0;
         votes_responded_ = 0;
         election_completed_ = false;

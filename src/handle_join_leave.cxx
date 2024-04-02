@@ -95,6 +95,10 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
         // Otherwise: activity timeout, reset the server.
         p_wn("activity timeout (last activity %" PRIu64 " ms ago), start over",
              last_active_ms);
+
+        cb_func::Param param(id_, leader_, srv_to_join_->get_id());
+        invoke_callback(cb_func::ServerJoinFailed, &param);
+
         reset_srv_to_join();
     }
 
@@ -166,6 +170,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     p_in("got join cluster req from leader %d", req.get_src());
     catching_up_ = true;
     role_ = srv_role::follower;
+    index_at_becoming_leader_ = 0;
     leader_ = req.get_src();
 
     if (reset_commit_idx) {
@@ -498,8 +503,8 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
     ptr<cluster_config> new_conf = cs_new<cluster_config>
                                    ( log_store_->next_slot(),
                                      cur_conf->get_log_idx() );
-    for ( cluster_config::const_srv_itor it = cur_conf->get_servers().begin();
-          it != cur_conf->get_servers().end();
+    for (auto it = cur_conf->get_servers().cbegin();
+          it != cur_conf->get_servers().cend();
           ++it ) {
         if ((*it)->get_id() != srv_id) {
             new_conf->get_servers().push_back(*it);
@@ -559,9 +564,7 @@ void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
         if (peers_.size() == 1) {
             peer_itor pit = peers_.find(p->get_id());
             if (pit != peers_.end()) {
-                pit->second->enable_hb(false);
-                peers_.erase(pit);
-                p_in("server %d is removed from cluster", p->get_id());
+                remove_peer_from_peers(pit->second);
             } else {
                 p_in("peer %d cannot be found, no action for removing",
                      p->get_id());

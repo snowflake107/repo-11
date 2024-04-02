@@ -34,6 +34,7 @@ limitations under the License.
 
 #include <list>
 #include <map>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -45,6 +46,7 @@ using CbReturnCode = cb_func::ReturnCode;
 class cluster_config;
 class custom_notification_msg;
 class delayed_task_scheduler;
+class global_mgr;
 class EventAwaiter;
 class logger;
 class peer;
@@ -473,6 +475,20 @@ public:
     { return is_leader() ? get_committed_log_idx() : leader_commit_index_.load(); }
 
     /**
+     * Get the log index of the first config when this server became a leader.
+     * This API can be used for checking if the state machine is fully caught up
+     * with the latest log after a leader election, so that the new leader can
+     * guarantee strong consistency.
+     *
+     * It will return 0 if this server is not a leader.
+     *
+     * @return The log index of the first config when this server became a leader.
+     */
+    uint64_t get_log_idx_at_becoming_leader() const {
+        return index_at_becoming_leader_;
+    }
+
+    /**
      * Calculate the log index to be committed
      * from current peers' matched indexes.
      *
@@ -781,9 +797,26 @@ public:
      * Manually create a snapshot based on the latest committed
      * log index of the state machine.
      *
+     * Note that snapshot creation will fail immediately if the previous
+     * snapshot task is still running.
+     *
      * @return Log index number of the created snapshot or`0` if failed.
      */
     ulong create_snapshot();
+
+    /**
+     * Manually and asynchronously create a snapshot on the next earliest
+     * available commited log index.
+     *
+     * Unlike `create_snapshot`, if the previous snapshot task is running,
+     * it will wait until the previous task is done. Once the snapshot
+     * creation is finished, it will be notified via the returned
+     * `cmd_result` with the log index number of the snapshot.
+     *
+     * @return `cmd_result` instance.
+     *         `nullptr` if there is already a scheduled snapshot creation.
+     */
+    ptr< cmd_result<uint64_t> > schedule_snapshot_creation();
 
     /**
      * Get the log index number of the last snapshot.
@@ -870,8 +903,8 @@ protected:
 
     void drop_all_pending_commit_elems();
 
-    ptr<resp_msg> handle_ext_msg(req_msg& req);
-    ptr<resp_msg> handle_install_snapshot_req(req_msg& req);
+    ptr<resp_msg> handle_ext_msg(req_msg& req, std::unique_lock<std::recursive_mutex>& guard);
+    ptr<resp_msg> handle_install_snapshot_req(req_msg& req, std::unique_lock<std::recursive_mutex>& guard);
     ptr<resp_msg> handle_rm_srv_req(req_msg& req);
     ptr<resp_msg> handle_add_srv_req(req_msg& req);
     ptr<resp_msg> handle_log_sync_req(req_msg& req);
@@ -886,7 +919,7 @@ protected:
     void handle_log_sync_resp(resp_msg& resp);
     void handle_leave_cluster_resp(resp_msg& resp);
 
-    bool handle_snapshot_sync_req(snapshot_sync_req& req);
+    bool handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_lock<std::recursive_mutex>& guard);
 
     bool check_cond_for_zp_election();
     void request_prevote();
@@ -939,9 +972,13 @@ protected:
     void invite_srv_to_join_cluster();
     void rm_srv_from_cluster(int32 srv_id);
     int get_snapshot_sync_block_size() const;
-    void on_snapshot_completed(ptr<snapshot>& s,
+    void on_snapshot_completed(ptr<snapshot> s,
+                               ptr<cmd_result<uint64_t>> manual_creation_cb,
                                bool result,
                                ptr<std::exception>& err);
+    void on_log_compacted(ulong log_idx,
+                          bool result,
+                          ptr<std::exception>& err);
     void on_retryable_req_err(ptr<peer>& p, ptr<req_msg>& req);
     ulong term_for_log(ulong log_idx);
 
@@ -997,6 +1034,8 @@ protected:
     void request_append_entries_for_all();
 
     uint64_t get_current_leader_index();
+
+    global_mgr * get_global_mgr() const;
 
 protected:
     static const int default_snapshot_sync_block_size;
@@ -1097,6 +1136,13 @@ protected:
      * index is less than this number.
      */
     std::atomic<ulong> lagging_sm_target_index_;
+
+    /**
+     * If this server is the current leader, this will indicate
+     * the log index of the first config it appended as a leader.
+     * Otherwise (if non-leader), the value will be 0.
+     */
+    std::atomic<uint64_t> index_at_becoming_leader_;
 
     /**
      * (Read-only)
@@ -1220,6 +1266,16 @@ protected:
      * Only one snapshot creation is allowed at a time.
      */
     std::atomic<bool> snp_in_progress_;
+
+    /**
+     * `true` if a manual snapshot creation is scheduled by the user.
+     */
+    std::atomic<bool> snp_creation_scheduled_;
+
+    /**
+     * Non-null if a manual snapshot creation is cheduled by the user.
+     */
+    ptr< cmd_result<uint64_t> > sched_snp_creation_result_;
 
     /**
      * (Read-only, but its contents will change)

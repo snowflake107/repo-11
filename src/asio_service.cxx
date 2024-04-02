@@ -124,6 +124,12 @@ limitations under the License.
 // If set, each log entry will contain timestamp.
 #define INCLUDE_LOG_TIMESTAMP (0x4)
 
+// If set, CRC number represents the entire message.
+#define CRC_ON_ENTIRE_MESSAGE (0x8)
+
+// If set, each log entry will contain a CRC on the payload.
+#define CRC_ON_PAYLOAD (0x10)
+
 // =======================
 
 namespace nuraft {
@@ -132,7 +138,7 @@ static const size_t SSL_GRACE_PERIOD_MS = 500;
 static const size_t SEND_RETRY_MS       = 500;
 static const size_t SEND_RETRY_MAX      = 6;
 
-asio_service::meta_cb_params req_to_params(ptr<req_msg>& req) {
+asio_service::meta_cb_params req_to_params(req_msg* req, resp_msg* resp) {
     return asio_service::meta_cb_params
            ( (int)req->get_type(),
              req->get_src(),
@@ -140,7 +146,9 @@ asio_service::meta_cb_params req_to_params(ptr<req_msg>& req) {
              req->get_term(),
              req->get_last_log_term(),
              req->get_last_log_idx(),
-             req->get_commit_idx() );
+             req->get_commit_idx(),
+             req,
+             resp );
 }
 
 // === ASIO Abstraction ===
@@ -196,7 +204,6 @@ private:
     ssl_context ssl_client_ctx_;
     asio::steady_timer asio_timer_;
     std::atomic_int continue_;
-    std::mutex logger_list_lock_;
     std::atomic<uint8_t> stopping_status_;
     std::mutex stopping_lock_;
     std::condition_variable stopping_cv_;
@@ -240,6 +247,8 @@ public:
         , src_id_(-1)
         , is_leader_(false)
         , cached_port_(0)
+        , crc_header_(0)
+        , crc_from_msg_(0)
     {
         p_tr("asio rpc session created: %p", this);
     }
@@ -341,19 +350,26 @@ public:
             // NOTE:
             //  due to async_read() above, header_ size will be always
             //  equal to or greater than RPC_REQ_HEADER_SIZE.
-            header_->pos(0);
-            byte* header_data = header_->data();
-            uint32_t crc_local = crc32_8( header_data,
-                                          RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN,
-                                          0 );
 
-            header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN);
-            uint64_t flags_and_crc = header_->get_ulong();
-            uint32_t crc_hdr = flags_and_crc & static_cast<uint32_t>(0xffffffff);
+            // Deprecate `buffer::get` and use `buffer_serializer`.
+
+            // header_->pos(0);
+            buffer_serializer h_bs(header_);
+            byte* header_data = header_->data_begin();
+            crc_header_ = crc32_8( header_data,
+                                   RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN,
+                                   0 );
+
+            // header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN);
+            h_bs.pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN);
+            // uint64_t flags_and_crc = header_->get_ulong();
+            uint64_t flags_and_crc = h_bs.get_u64();
+            crc_from_msg_ = flags_and_crc & (uint32_t)0xffffffff;
             flags_ = (flags_and_crc >> 32);
 
-            // Verify CRC.
-            if (crc_local != crc_hdr) {
+            // Verify CRC (if entire message validation is disbaled).
+            if ( !(flags_ & CRC_ON_ENTIRE_MESSAGE) &&
+                 crc_header_ != crc_from_msg_ ) {
                 auto received_data = std::string(reinterpret_cast<char *>(header_data), RPC_REQ_HEADER_SIZE);
                 std::stringstream ss;
                 for (auto ch : received_data) {
@@ -361,27 +377,46 @@ public:
                 }
                 auto received_data_bytes = ss.str();
                 p_er("CRC mismatch: local calculation %x, from header %x, message: %s, message in bytes: %s: received from socket %s:%u",
-                     crc_local, crc_hdr, received_data.c_str(), received_data_bytes.c_str(), cached_address_.c_str(), cached_port_);
+                     crc_header_, crc_from_msg_, received_data.c_str(), received_data_bytes.c_str(), cached_address_.c_str(), cached_port_);
+
+                if (impl_->get_options().corrupted_msg_handler_) {
+                    impl_->get_options().corrupted_msg_handler_(header_, nullptr);
+                }
+
                 this->stop();
                 return;
             }
 
-            header_->pos(0);
-            byte marker = header_->get_byte();
+            // header_->pos(0);
+            // byte marker = header_->get_byte();
+            h_bs.pos(0);
+            byte marker = h_bs.get_u8();
             if (marker == 0x1) {
                 // Means that this is RPC_RESP, shouldn't happen.
                 p_er("Wrong packet: expected REQ, got RESP");
+
+                if (impl_->get_options().corrupted_msg_handler_) {
+                    impl_->get_options().corrupted_msg_handler_(header_, nullptr);
+                }
+
                 this->stop();
                 return;
             }
 
-            header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN - DATA_SIZE_LEN);
-            int32 data_size = header_->get_int();
-
+            // header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN - DATA_SIZE_LEN);
+            // int32 data_size = header_->get_int();
+            h_bs.pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN - DATA_SIZE_LEN);
+            int32 data_size = h_bs.get_i32();
+            // Up to 1GB.
             if (data_size < 0) {
                 p_er("bad log data size in the header %d, stop "
                      "this session to protect further corruption",
                      data_size);
+
+                if (impl_->get_options().corrupted_msg_handler_) {
+                    impl_->get_options().corrupted_msg_handler_(header_, nullptr);
+                }
+
                 this->stop();
                 return;
             }
@@ -477,14 +512,47 @@ private:
         ptr<rpc_session> self = this->shared_from_this();
 
        try {
-        hdr->pos(1);
-        msg_type t = (msg_type)hdr->get_byte();
-        int32 src = hdr->get_int();
-        int32 dst = hdr->get_int();
-        ulong term = hdr->get_ulong();
-        ulong last_term = hdr->get_ulong();
-        ulong last_idx = hdr->get_ulong();
-        ulong commit_idx = hdr->get_ulong();
+        // Deprecate `buffer::get` and use `buffer_serializer`.
+        // hdr->pos(1);
+        // msg_type t = (msg_type)hdr->get_byte();
+        // int32 src = hdr->get_int();
+        // int32 dst = hdr->get_int();
+        // ulong term = hdr->get_ulong();
+        // ulong last_term = hdr->get_ulong();
+        // ulong last_idx = hdr->get_ulong();
+        // ulong commit_idx = hdr->get_ulong();
+
+        buffer_serializer h_bs(header_);
+        h_bs.pos(1);
+        msg_type t = (msg_type)h_bs.get_u8();
+        int32 src = h_bs.get_i32();
+        int32 dst = h_bs.get_i32();
+        ulong term = h_bs.get_u64();
+        ulong last_term = h_bs.get_u64();
+        ulong last_idx = h_bs.get_u64();
+        ulong commit_idx = h_bs.get_u64();
+        int32 log_data_size = h_bs.get_i32();
+
+        if (flags_ & CRC_ON_ENTIRE_MESSAGE) {
+            // Calculate the CRC of `log_ctx`.
+            uint32_t crc_payload =
+                log_ctx
+                ? crc32_8( log_ctx->data_begin(),
+                           log_ctx->size(),
+                           crc_header_ )
+                : crc_header_;
+            if (crc_payload != crc_from_msg_) {
+                p_er("request CRC mismatch: local calculation %x, from message %x",
+                     crc_payload, crc_from_msg_);
+
+                if (impl_->get_options().corrupted_msg_handler_) {
+                    impl_->get_options().corrupted_msg_handler_(header_, log_ctx);
+                }
+
+                this->stop();
+                return;
+            }
+        }
 
         if (src_id_ == -1) {
             // It means this is the first message on this session.
@@ -527,7 +595,7 @@ private:
         std::string meta_str;
         ptr<req_msg> req = cs_new<req_msg>
                            ( term, t, src, dst, last_term, last_idx, commit_idx );
-        if (hdr->get_int() > 0 && log_ctx) {
+        if (log_data_size > 0 && log_ctx) {
             buffer_serializer ss(log_ctx);
             size_t log_ctx_size = log_ctx->size();
 
@@ -544,18 +612,28 @@ private:
             if (flags_ & INCLUDE_LOG_TIMESTAMP) {
                 LOG_ENTRY_SIZE += 8;
             }
+            if (flags_ & CRC_ON_PAYLOAD) {
+                LOG_ENTRY_SIZE += 5;
+            }
 
             while (log_ctx_size > ss.pos()) {
                 if (log_ctx_size - ss.pos() < LOG_ENTRY_SIZE) {
                     // Possibly corrupted packet. Stop here.
                     p_wn("wrong log ctx size %zu pos %zu, stop this session",
                          log_ctx_size, ss.pos());
+
+                    if (impl_->get_options().corrupted_msg_handler_) {
+                        impl_->get_options().corrupted_msg_handler_(header_, log_ctx);
+                    }
+
                     this->stop();
                     return;
                 }
                 ulong term = ss.get_u64();
                 log_val_type val_type = (log_val_type)ss.get_u8();
                 uint64_t timestamp = (flags_ & INCLUDE_LOG_TIMESTAMP) ? ss.get_u64() : 0;
+                bool has_crc32 = (flags_ & CRC_ON_PAYLOAD) ? (ss.get_u8() != 0) : false;
+                uint32_t crc32 = (flags_ & CRC_ON_PAYLOAD) ? ss.get_u32() : 0;
 
                 size_t val_size = ss.get_i32();
                 if (log_ctx_size - ss.pos() < val_size) {
@@ -563,6 +641,11 @@ private:
                     p_wn("wrong value size %zu log ctx %zu %zu, "
                          "stop this session",
                          val_size, log_ctx_size, ss.pos());
+
+                    if (impl_->get_options().corrupted_msg_handler_) {
+                        impl_->get_options().corrupted_msg_handler_(header_, log_ctx);
+                    }
+
                     this->stop();
                     return;
                 }
@@ -570,7 +653,26 @@ private:
                 ptr<buffer> buf( buffer::alloc(val_size) );
                 ss.get_buffer(buf);
                 ptr<log_entry> entry(
-                    cs_new<log_entry>(term, buf, val_type, timestamp) );
+                    cs_new<log_entry>(term, buf, val_type, timestamp, has_crc32, crc32, false) );
+
+                if ((flags_ & CRC_ON_PAYLOAD) && has_crc32) {
+                    // Verify CRC.
+                    uint32_t crc_payload = crc32_8( buf->data_begin(),
+                                                    buf->size(),
+                                                    0 );
+                    if (crc_payload != crc32) {
+                        p_er("log entry CRC mismatch: local calculation %x, "
+                             "from message %x", crc_payload, crc32);
+
+                        if (impl_->get_options().corrupted_msg_handler_) {
+                            impl_->get_options().corrupted_msg_handler_(header_, log_ctx);
+                        }
+
+                        this->stop();
+                        return;
+                    }
+                }
+
                 req->log_entries().push_back(entry);
             }
         }
@@ -581,7 +683,7 @@ private:
              ( !meta_str.empty() ||
                impl_->get_options().invoke_req_cb_on_empty_meta_ ) ) {
             if ( !impl_->get_options().read_req_meta_
-                  ( req_to_params(req), meta_str ) ) {
+                  ( req_to_params(req.get(), nullptr), meta_str ) ) {
                 this->stop();
                 return;
             }
@@ -643,7 +745,7 @@ private:
         std::string resp_meta_str;
         if (impl_->get_options().write_resp_meta_) {
             resp_meta_str = impl_->get_options().write_resp_meta_
-                            ( req_to_params(req) );
+                            ( req_to_params(req.get(), resp.get()) );
             if (!resp_meta_str.empty()) {
                 // Meta callback for response is given, set the flag.
                 flags |= INCLUDE_META;
@@ -756,6 +858,16 @@ private:
 
     std::string cached_address_;
     uint32_t cached_port_;
+
+    /**
+     * Locally calculated CRC number of the request header.
+     */
+    uint32_t crc_header_;
+
+    /**
+     * CRC number from the request header.
+     */
+    uint32_t crc_from_msg_;
 };
 
 // rpc listener implementation
@@ -1159,6 +1271,10 @@ public:
             LOG_ENTRY_SIZE += 8;
             flags |= INCLUDE_LOG_TIMESTAMP;
         }
+        if (impl_->get_options().crc_on_payload_) {
+            LOG_ENTRY_SIZE += 5;
+            flags |= CRC_ON_PAYLOAD;
+        }
 
         for (auto& entry: req->log_entries()) {
             ptr<log_entry>& le = entry;
@@ -1178,6 +1294,10 @@ public:
             if (impl_->get_options().replicate_log_timestamp_) {
                 ss.put_u64( le->get_timestamp() );
             }
+            if (impl_->get_options().crc_on_payload_) {
+                ss.put_u8(le->has_crc32() ? 1 : 0);
+                ss.put_u32(le->get_crc32());
+            }
             ss.put_i32( le->get_buf().size() );
             ss.put_raw( le->get_buf().data_begin(), le->get_buf().size() );
 #endif
@@ -1188,7 +1308,8 @@ public:
         size_t meta_size = 0;
         std::string meta_str;
         if (impl_->get_options().write_req_meta_) {
-            meta_str = impl_->get_options().write_req_meta_( req_to_params(req) );
+            meta_str = impl_->get_options().write_req_meta_
+                       ( req_to_params(req.get(), nullptr) );
             if (!meta_str.empty()) {
                 // If callback for meta is given, set flag.
                 flags |= INCLUDE_META;
@@ -1199,37 +1320,69 @@ public:
         ptr<buffer> req_buf =
             buffer::alloc(RPC_REQ_HEADER_SIZE + meta_size + log_data_size);
 
-        req_buf->pos(0);
-        byte* req_buf_data = req_buf->data();
+        // Deprecate `buffer::put` and use `buffer_serializer`.
 
-        byte marker = 0x0;
-        req_buf->put(marker);
-        req_buf->put((byte)req->get_type());
-        req_buf->put(req->get_src());
-        req_buf->put(req->get_dst());
-        req_buf->put(req->get_term());
-        req_buf->put(req->get_last_log_term());
-        req_buf->put(req->get_last_log_idx());
-        req_buf->put(req->get_commit_idx());
-        req_buf->put((int32)meta_size + log_data_size);
+        // req_buf->pos(0);
+        // byte* req_buf_data = req_buf->data();
+
+        // byte marker = 0x0;
+        // req_buf->put(marker);
+        // req_buf->put((byte)req->get_type());
+        // req_buf->put(req->get_src());
+        // req_buf->put(req->get_dst());
+        // req_buf->put(req->get_term());
+        // req_buf->put(req->get_last_log_term());
+        // req_buf->put(req->get_last_log_idx());
+        // req_buf->put(req->get_commit_idx());
+        // req_buf->put((int32)meta_size + log_data_size);
+
+        buffer_serializer req_buf_bs(req_buf);
+        req_buf_bs.put_u8(0x0);
+        req_buf_bs.put_u8((byte)req->get_type());
+        req_buf_bs.put_i32(req->get_src());
+        req_buf_bs.put_i32(req->get_dst());
+        req_buf_bs.put_u64(req->get_term());
+        req_buf_bs.put_u64(req->get_last_log_term());
+        req_buf_bs.put_u64(req->get_last_log_idx());
+        req_buf_bs.put_u64(req->get_commit_idx());
+        req_buf_bs.put_i32((int32)meta_size + log_data_size);
 
         // Calculate CRC32 on header-only.
-        uint32_t crc_val = crc32_8( req_buf_data,
-                                    RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN,
-                                    0 );
+        uint32_t crc_header = crc32_8( req_buf->data_begin(),
+                                       RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN,
+                                       0 );
 
-        uint64_t flags_and_crc = ((uint64_t)flags << 32) | crc_val;
-        req_buf->put((ulong)flags_and_crc);
+        uint64_t flags_and_crc = ((uint64_t)flags << 32) | crc_header;
+        // req_buf->put((ulong)flags_and_crc);
+        size_t crc_pos = req_buf_bs.pos();
+        req_buf_bs.put_u64(flags_and_crc);
+
+        // From now on, it will contain the payload (== meta + log entries).
+        // byte* req_buf_payload = req_buf->data();
+        size_t payload_pos = req_buf_bs.pos();
 
         // Handling meta if the flag is set.
         if (flags & INCLUDE_META) {
-            req_buf->put( (byte*)meta_str.data(), meta_str.size() );
+            // req_buf->put( (byte*)meta_str.data(), meta_str.size() );
+            req_buf_bs.put_bytes( (byte*)meta_str.data(), meta_str.size() );
         }
 
         for (auto& it: log_entry_bufs) {
-            req_buf->put(*(it));
+            // req_buf->put(*(it));
+            req_buf_bs.put_buffer(*(it));
         }
-        req_buf->pos(0);
+        // req_buf->pos(0);
+
+        if (impl_->get_options().crc_on_entire_message_) {
+            uint32_t crc_payload = crc32_8( req_buf->data_begin() + payload_pos,
+                                            meta_size + log_data_size,
+                                            crc_header );
+            // Overwrite CRC field.
+            flags |= CRC_ON_ENTIRE_MESSAGE;
+            flags_and_crc = ((uint64_t)flags << 32) | crc_payload;
+            req_buf_bs.pos(crc_pos);
+            req_buf_bs.put_u64(flags_and_crc);
+        }
 
         if (send_timeout_ms != 0)
         {
@@ -1605,7 +1758,7 @@ private:
         if (remaining_len) {
             // It has context, read it.
             ptr<buffer> actual_ctx = buffer::alloc(remaining_len);
-            ctx_buf->get(actual_ctx);
+            bs.get_buffer(actual_ctx);
             rsp->set_ctx(actual_ctx);
         }
 
@@ -1621,7 +1774,7 @@ private:
                                  const std::string& meta_str)
     {
         bool meta_ok = impl_->get_options().read_resp_meta_
-                       ( req_to_params(req), meta_str );
+                       ( req_to_params(req.get(), rsp.get()), meta_str );
 
         if (!meta_ok) {
             // Callback function returns false, should return failure.
@@ -1675,32 +1828,52 @@ void _timer_handler_(ptr<delayed_task>& task, ERROR_CODE err) {
     }
 }
 
+// `ssl_context` constructor with `SSL_CTX*` is supported by ASIO later than 1.16.1.
+#if (ASIO_VERSION >= 101601) && \
+    (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
+    !defined(LIBRESSL_VERSION_NUMBER)
+
+#define DEFAULT_SERVER_CTX ssl_context::tlsv12_server
+#define DEFAULT_CLIENT_CTX ssl_context::tlsv12_client
+
 namespace {
 
-#ifndef SSL_LIBRARY_NOT_FOUND
-ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provider_func, ssl_context::method method) {
-    if (ctx_provider_func)
+ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provider_func,
+                                      ssl_context::method method)
+{
+    if (ctx_provider_func) {
         return ssl_context(ctx_provider_func());
-    else
+    } else {
         return ssl_context(method);
+    }
 }
-#endif
 
 }
+
+#else
+
+#define DEFAULT_SERVER_CTX ssl_context::sslv23
+#define DEFAULT_CLIENT_CTX ssl_context::sslv23
+
+#endif
 
 asio_service_impl::asio_service_impl(const asio_service::options& _opt,
                                      ptr<logger> l)
     : io_svc_()
-#if (OPENSSL_VERSION_NUMBER >= 0x10100000L) && !defined(LIBRESSL_VERSION_NUMBER)
-    , ssl_server_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_server_, ssl_context::tlsv12_server))
-    , ssl_client_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_client_, ssl_context::tlsv12_client))
+#if (ASIO_VERSION >= 101601) && \
+    (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
+    !defined(LIBRESSL_VERSION_NUMBER)
+    , ssl_server_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_server_,
+                                                DEFAULT_SERVER_CTX))
+    , ssl_client_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_client_,
+                                                DEFAULT_CLIENT_CTX))
+
 #else
-    , ssl_server_ctx_(ssl_context::sslv23)  // Any version
-    , ssl_client_ctx_(ssl_context::sslv23)
+    , ssl_server_ctx_(DEFAULT_SERVER_CTX)  // Any version
+    , ssl_client_ctx_(DEFAULT_CLIENT_CTX)
 #endif
     , asio_timer_(io_svc_)
     , continue_(1)
-    , logger_list_lock_()
     , stopping_status_(0)
     , stopping_lock_()
     , stopping_cv_()
@@ -1714,8 +1887,10 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
 #ifdef SSL_LIBRARY_NOT_FOUND
         assert(0); // Should not reach here.
 #else
-        // We assume that provider gives properly configured context
+        // Provider gives properly configured server contex
         if (!_opt.ssl_context_provider_server_) {
+            p_in("server SSL context method %d", DEFAULT_SERVER_CTX);
+
             // For server (listener)
             ssl_server_ctx_.set_options( ssl_context::default_workarounds |
                                          ssl_context::no_sslv2 |
@@ -1729,18 +1904,18 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
                             ( _opt.server_cert_file_ );
             ssl_server_ctx_.use_private_key_file( _opt.server_key_file_,
                                                   ssl_context::pem );
+        } else {
+            p_in("custom server SSL context is given");
         }
 
-        // We assume that provider gives properly configured context
+        // Provider gives properly configured client contex
         if (!_opt.ssl_context_provider_client_) {
-            if (!_opt.root_cert_file_.empty()) {
-                // For client
-                ssl_client_ctx_.load_verify_file(_opt.root_cert_file_);
-            }
+            p_in("client SSL context method %d", DEFAULT_CLIENT_CTX);
 
-            if (_opt.load_default_ca_file_) {
-                ssl_client_ctx_.set_default_verify_paths();
-            }
+            // For client
+            ssl_client_ctx_.load_verify_file(_opt.root_cert_file_);
+        } else {
+            p_in("custom client SSL context is given");
         }
 #endif
     }

@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef _CALLBACK_H_
 #define _CALLBACK_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -158,38 +159,80 @@ public:
         StateMachineExecution = 19,
 
         /**
+         * Just sent an append entries request.
+         * ctx: pointer to `req_msg` instance.
+         */
+        SentAppendEntriesReq = 20,
+
+        /**
+         * Just received an append entries request.
+         * ctx: pointer to `req_msg` instance.
+         */
+        ReceivedAppendEntriesReq = 21,
+
+        /**
+         * Just sent an append entries response.
+         * ctx: pointer to `resp_msg` instance.
+         */
+        SentAppendEntriesResp = 22,
+
+        /**
+         * Just received an append entries response.
+         * ctx: pointer to `resp_msg` instance.
+         */
+        ReceivedAppendEntriesResp = 23,
+
+        /**
+         * When cluster size is 2 and `auto_adjust_quorum_for_small_cluster_` is on,
+         * this server attempts to adjust the quorum size to 1.
+         * ctx: null
+         */
+        AutoAdjustQuorum = 24,
+
+        /**
+         * Adding a server failed due to RPC errors and timeout expiry.
+         * ctx: null
+         */
+        ServerJoinFailed = 25,
+
+        /**
+         * Snapshot creation begins.
+         * ctx: pointer to `uint64_t` (committed_idx).
+         */
+        SnapshotCreationBegin = 26,
+
+        /**
+         * Got a resgination request either automatically or manually.
+         * ctx: null.
+         */
+        ResignationFromLeader = 27,
+
+        /**
          * Initial batch of entries commited.
          * Useful on server init when server startup from
          * huge log storage.
          * ctx: null
          */
-        InitialBatchCommited = 20,
+        InitialBatchCommited = 28,
 
         /**
          * Called before log is appended to the entries on leader node.
          * ctx: pointer to the ptr<log_entry>
          */
-        PreAppendLogLeader = 21,
+        PreAppendLogLeader = 29,
 
         /**
          * Called when appending a log fails.
          * Happens on leader only.
          * ctx: pointer to the ptr<log_entry>
          */
-        AppendLogFailed = 22,
+        AppendLogFailed = 30,
 
         /**
          * Called before log is appended to the entries on follower node.
          * ctx: pointer to the ptr<log_entry>
          */
-        PreAppendLogFollower = 23,
-
-        /**
-         * Adding a server failed due to RPC errors and timeout expiry.
-         * TODO: @myrrc: 25 in upstream NuRaft
-         * ctx: null
-         */
-        ServerJoinFailed = 24
+        PreAppendLogFollower = 31,
     };
 
     struct Param {

@@ -66,7 +66,7 @@ void raft_server::commit(ulong target_idx) {
     if ( log_store_->next_slot() - 1 > sm_commit_index_ &&
          quick_commit_index_ > sm_commit_index_ ) {
 
-        nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+        global_mgr* mgr = get_global_mgr();
         if (mgr) {
             // Global thread pool exists, request it.
             p_tr("request commit to global thread pool");
@@ -495,6 +495,18 @@ ulong raft_server::create_snapshot() {
     return snapshot_and_compact(committed_idx, true) ? committed_idx : 0;
 }
 
+ptr< cmd_result<uint64_t> > raft_server::schedule_snapshot_creation() {
+    bool exp = false;
+    if (!snp_creation_scheduled_.compare_exchange_strong(exp, true)) {
+        p_wn("snapshot creation is already scheduled");
+        return nilptr;
+    }
+
+    sched_snp_creation_result_ = cs_new<cmd_result<uint64_t>>();
+    p_in("schedule snapshot creation");
+    return sched_snp_creation_result_;
+}
+
 ulong raft_server::get_last_snapshot_idx() const {
     std::lock_guard<std::mutex> l(last_snapshot_lock_);
     return last_snapshot_ ? last_snapshot_->get_last_log_idx(): 0;
@@ -520,7 +532,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
         snapshot_distance = first_snapshot_distance_;
     }
 
-    if (!forced_creation) {
+    if (!forced_creation && !snp_creation_scheduled_) {
         // If `forced_creation == true`, ignore below conditions.
         if ( params->snapshot_distance_ == 0 ||
              ( committed_idx - log_store_->start_index() + 1 ) < snapshot_distance ) {
@@ -538,13 +550,48 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
  try {
     bool f = false;
     ptr<snapshot> local_snp = get_last_snapshot();
+
+    cb_func::Param param(id_, leader_, -1, &committed_idx);
+    CbReturnCode rc = invoke_callback(cb_func::SnapshotCreationBegin, &param);
+    if (rc != CbReturnCode::Ok) {
+        p_wn("creating a snapshot %" PRIu64 " is rejected by user callback",
+             committed_idx);
+        return false;
+    }
+
     if ( ( forced_creation ||
+           snp_creation_scheduled_ ||
            !local_snp ||
-           ( committed_idx - local_snp->get_last_log_idx() ) >= snapshot_distance ) &&
+           committed_idx >= snapshot_distance + local_snp->get_last_log_idx() ) &&
          snp_in_progress_.compare_exchange_strong(f, true) )
     {
         snapshot_in_action = true;
         p_in("creating a snapshot for index %" PRIu64 "", committed_idx);
+
+        // NOTE:
+        //   Due to the public API `raft_server::create_snapshot()`,
+        //   there can be a race between user thread and commit thread,
+        //   which results in snapshot index inversion.
+        //
+        //   To avoid such a case, while `snp_in_progress_` is true,
+        //   we re-check the latest snapshot index here.
+        local_snp = get_last_snapshot();
+        if (local_snp && local_snp->get_last_log_idx() >= committed_idx) {
+            p_wn("snapshot index inversion detected, "
+                 "skip snapshot creation for index %" PRIu64 ", "
+                 "latest snapshot index %" PRIu64 "",
+                 committed_idx, local_snp->get_last_log_idx());
+            snp_in_progress_ = false;
+            return false;
+        }
+
+        ptr<cmd_result<uint64_t>> manual_creation_cb = nullptr;
+        if (snp_creation_scheduled_) {
+            // User scheduled a new snapshot creation.
+            // Due to `snp_in_progress_` it will happen only once.
+            manual_creation_cb = sched_snp_creation_result_;
+            p_in("snapshot creation is scheduled by user");
+        }
 
         while ( conf->get_log_idx() > committed_idx &&
                 conf->get_prev_log_idx() >= log_store_->start_index() ) {
@@ -593,6 +640,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
             std::bind( &raft_server::on_snapshot_completed,
                        this,
                        new_snapshot,
+                       manual_creation_cb,
                        std::placeholders::_1,
                        std::placeholders::_2 );
         timer_helper tt;
@@ -618,7 +666,10 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
 }
 
 void raft_server::on_snapshot_completed
-     ( ptr<snapshot>& s, bool result, ptr<std::exception>& err )
+     ( ptr<snapshot> s,
+       ptr<cmd_result<uint64_t>> manual_creation_cb,
+       bool result,
+       ptr<std::exception>& err )
 {
  do { // Dummy loop
     if (err != nilptr) {
@@ -646,12 +697,41 @@ void raft_server::on_snapshot_completed
             ulong compact_upto = new_snp->get_last_log_idx() -
                                      (ulong)params->reserved_log_items_;
             p_in("log_store_ compact upto %" PRIu64 "", compact_upto);
-            log_store_->compact(compact_upto);
+
+            cmd_result<bool>::handler_type handler =
+                (cmd_result<bool>::handler_type)
+                std::bind( &raft_server::on_log_compacted,
+                           this,
+                           compact_upto,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
+
+            log_store_->compact_async(compact_upto, handler);
         }
     }
  } while (false);
 
+    if (manual_creation_cb.get()) {
+        // This was a manual request scheduled by the user.
+        uint64_t idx = 0;
+        cmd_result_code code = cmd_result_code::FAILED;
+        if (err == nilptr && result) {
+            idx = s->get_last_log_idx();
+            code = cmd_result_code::OK;
+        }
+        manual_creation_cb->set_result(idx, err, code);
+        sched_snp_creation_result_.reset();
+        snp_creation_scheduled_ = false;
+    }
+
     snp_in_progress_.store(false);
+}
+
+void raft_server::on_log_compacted(ulong log_idx,
+                                   bool result,
+                                   ptr<std::exception>& err)
+{
+    // Place holder. Just move forward.
 }
 
 void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
@@ -912,7 +992,7 @@ void raft_server::resume_state_machine_execution() {
           sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
     sm_commit_paused_ = false;
 
-    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    global_mgr* mgr = get_global_mgr();
     if (mgr) {
         // Global mgr.
         mgr->request_commit( this->shared_from_this() );
