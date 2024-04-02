@@ -207,6 +207,32 @@ public:
          */
         ResignationFromLeader = 27,
 
+        /**
+         * Initial batch of entries commited.
+         * Useful on server init when server startup from
+         * huge log storage.
+         * ctx: null
+         */
+        InitialBatchCommited = 28,
+
+        /**
+         * Called before log is appended to the entries on leader node.
+         * ctx: pointer to the ptr<log_entry>
+         */
+        PreAppendLogLeader = 29,
+
+        /**
+         * Called when appending a log fails.
+         * Happens on leader only.
+         * ctx: pointer to the ptr<log_entry>
+         */
+        AppendLogFailed = 30,
+
+        /**
+         * Called before log is appended to the entries on follower node.
+         * ctx: pointer to the ptr<log_entry>
+         */
+        PreAppendLogFollower = 31,
     };
 
     struct Param {
