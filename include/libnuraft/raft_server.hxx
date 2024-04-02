@@ -31,6 +31,7 @@ limitations under the License.
 #include "srv_role.hxx"
 #include "srv_state.hxx"
 #include "timer_task.hxx"
+#include "thread.hxx"
 
 #include <list>
 #include <map>
@@ -1010,13 +1011,13 @@ protected:
      * (Read-only)
      * Background thread for commit and snapshot.
      */
-    std::thread bg_commit_thread_;
+    thread bg_commit_thread_;
 
     /**
      * (Read-only)
      * Background thread for sending quick append entry request.
      */
-    std::thread bg_append_thread_;
+    thread bg_append_thread_;
 
     /**
      * Condition variable to invoke append thread.

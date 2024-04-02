@@ -202,7 +202,7 @@ private:
     std::condition_variable stopping_cv_;
     std::atomic<uint32_t> num_active_workers_;
     std::atomic<uint32_t> worker_id_;
-    std::list< ptr<std::thread> > worker_handles_;
+    std::list< ptr<thread> > worker_handles_;
     asio_service::options my_opt_;
     std::atomic<uint64_t> client_id_counter_;
     ptr<logger> l_;
@@ -1764,8 +1764,8 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
     }
 
     for (unsigned int i = 0; i < cpu_cnt; ++i) {
-        ptr<std::thread> t =
-            cs_new<std::thread>( std::bind(&asio_service_impl::worker_entry, this) );
+        ptr<thread> t =
+            cs_new<thread>( std::bind(&asio_service_impl::worker_entry, this) );
         worker_handles_.push_back(t);
     }
 }
@@ -1886,7 +1886,7 @@ void asio_service_impl::stop() {
         std::this_thread::yield();
     }
 
-    for (ptr<std::thread>& t: worker_handles_) {
+    for (ptr<thread>& t: worker_handles_) {
         if (t && t->joinable()) {
             t->join();
         }
