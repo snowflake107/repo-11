@@ -42,7 +42,6 @@ limitations under the License.
 #include <sstream>
 #include <thread>
 
-
 namespace nuraft {
 
 const int raft_server::default_snapshot_sync_block_size = 4 * 1024;
