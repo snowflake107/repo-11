@@ -1,8 +1,8 @@
 #ifndef THREAD_HXX_
 #define THREAD_HXX_
 
-#if USE_CLICKHOUSE_THREADS
 #include <Common/ThreadPool.h>
+#if USE_CLICKHOUSE_THREADS
 #else
 #include <thread>
 #endif
@@ -10,9 +10,9 @@
 namespace nuraft
 {
 #if USE_CLICKHOUSE_THREADS
-    using thread = ThreadFromGlobalPool;
+    using nuraft_thread = ThreadFromGlobalPool;
 #else
-    using thread = std::thread;
+    using nuraft_thread = std::thread;
 #endif
 }
 

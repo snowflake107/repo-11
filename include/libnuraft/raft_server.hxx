@@ -1050,13 +1050,13 @@ protected:
      * (Read-only)
      * Background thread for commit and snapshot.
      */
-    thread bg_commit_thread_;
+    nuraft_thread bg_commit_thread_;
 
     /**
      * (Read-only)
      * Background thread for sending quick append entry request.
      */
-    thread bg_append_thread_;
+    nuraft_thread bg_append_thread_;
 
     /**
      * Condition variable to invoke append thread.

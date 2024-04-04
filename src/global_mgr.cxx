@@ -92,7 +92,7 @@ struct nuraft_global_mgr::worker_handle {
 
     size_t id_;
     EventAwaiter ea_;
-    ptr<thread> thread_;
+    ptr<nuraft_thread> thread_;
     std::atomic<bool> stopping_;
     std::atomic<status> status_;
 };
@@ -141,7 +141,7 @@ void nuraft_global_mgr::init_thread_pool() {
     for (size_t ii = 0; ii < config_.num_commit_threads_; ++ii) {
         ptr<worker_handle> w_hdl =
             cs_new<worker_handle>( thread_id_counter_.fetch_add(1) );
-        w_hdl->thread_ = cs_new<thread>( &nuraft_global_mgr::commit_worker_loop,
+        w_hdl->thread_ = cs_new<nuraft_thread>( &nuraft_global_mgr::commit_worker_loop,
                                               this,
                                               w_hdl );
         commit_workers_.push_back(w_hdl);
@@ -150,7 +150,7 @@ void nuraft_global_mgr::init_thread_pool() {
     for (size_t ii = 0; ii < config_.num_append_threads_; ++ii) {
         ptr<worker_handle> w_hdl =
             cs_new<worker_handle>( thread_id_counter_.fetch_add(1) );
-        w_hdl->thread_ = cs_new<thread>( &nuraft_global_mgr::append_worker_loop,
+        w_hdl->thread_ = cs_new<nuraft_thread>( &nuraft_global_mgr::append_worker_loop,
                                               this,
                                               w_hdl );
         append_workers_.push_back(w_hdl);
