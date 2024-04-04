@@ -10,9 +10,9 @@
 namespace nuraft
 {
 #if USE_CLICKHOUSE_THREADS
-    using thread = ThreadFromGlobalPool;
+    using nuraft_thread = ThreadFromGlobalPool;
 #else
-    using thread = std::thread;
+    using nuraft_thread = std::thread;
 #endif
 }
 

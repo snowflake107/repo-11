@@ -159,7 +159,7 @@ private:
     /**
      * A dedicated thread for reading snapshot object.
      */
-    thread io_thread_;
+    nuraft_thread io_thread_;
 
     /**
      * Event awaiter for `io_thread_`.

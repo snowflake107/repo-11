@@ -278,10 +278,10 @@ void raft_server::start_server(bool skip_initial_election_timeout)
     } else {
         p_in("global manager does not exist. "
              "will use local thread for commit and append");
-        bg_commit_thread_ = thread(std::bind(&raft_server::commit_in_bg, this));
+        bg_commit_thread_ = nuraft_thread(std::bind(&raft_server::commit_in_bg, this));
 
         bg_append_ea_ = new EventAwaiter();
-        bg_append_thread_ = thread(std::bind(&raft_server::append_entries_in_bg, this));
+        bg_append_thread_ = nuraft_thread(std::bind(&raft_server::append_entries_in_bg, this));
     }
 
     if (skip_initial_election_timeout) {
