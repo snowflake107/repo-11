@@ -1,8 +1,8 @@
 #ifndef THREAD_HXX_
 #define THREAD_HXX_
 
-#include <Common/ThreadPool.h>
 #if USE_CLICKHOUSE_THREADS
+#include <Common/ThreadPool.h>
 #else
 #include <thread>
 #endif
