@@ -1938,10 +1938,15 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
         cpu_cnt = 1;
     }
 
-    for (unsigned int i = 0; i < cpu_cnt; ++i) {
-        ptr<nuraft_thread> t =
-            cs_new<nuraft_thread>( std::bind(&asio_service_impl::worker_entry, this) );
-        worker_handles_.push_back(t);
+    try {
+        for (unsigned int i = 0; i < cpu_cnt; ++i) {
+            ptr<nuraft_thread> t =
+                cs_new<nuraft_thread>( std::bind(&asio_service_impl::worker_entry, this) );
+            worker_handles_.push_back(t);
+        }
+    } catch (...) {
+        stop();
+        throw;
     }
 }
 
