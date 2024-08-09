@@ -130,4 +130,4 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/0xPolygonHermez/zkevm-ethtx-manager => github.com/okx/xlayer-ethtx-manager v0.0.2
+replace github.com/0xPolygonHermez/zkevm-ethtx-manager => github.com/okx/xlayer-ethtx-manager v0.0.3-0.20240807093934-d210b4ec1c31
