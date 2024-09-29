@@ -14,11 +14,11 @@ end
 
 ### Authentication
 
-Not all requests require a REST API token. For example, listing posts on a public site is something anyone can do.
+Some WordPress.com REST API endpoints are publicly accessible. For instance, retrieving a list of posts from a public site can be done without any credentials.
 
-But if you do need a token, check out [OAuth2 Authentication](https://developer.wordpress.com/docs/oauth2/) at WordPress.com Developer Resources on how to get one.
+However, many API operations do require authentication. So if your application needs to access protected endpoints, you'll need to obtain an OAuth2 token. For detailed instructions on acquiring a token, refer to the [OAuth2 Authentication guide](https://developer.wordpress.com/docs/oauth2/) in the WordPress.com Developer Resources.
 
-Then use the token by adding this to your `runtime.exs`:
+Once you've obtained your token, you can configure your application to use it by adding the following line to your `runtime.exs` file:
 
 ```elixir
 config :wpcom, :oauth2_token: "_YOUR_OAUTH2_TOKEN_HERE_"
