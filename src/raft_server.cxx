@@ -24,6 +24,7 @@ limitations under the License.
 #include "context.hxx"
 #include "error_code.hxx"
 #include "event_awaiter.hxx"
+#include "exit_handler.hxx"
 #include "global_mgr.hxx"
 #include "handle_client_request.hxx"
 #include "handle_custom_notification.hxx"
@@ -603,33 +604,53 @@ int32 raft_server::get_leadership_expiry() {
     int expiry = params->leadership_expiry_;
     if (expiry == 0) {
         // If 0, default expiry: 20x of heartbeat.
-        expiry = params->heart_beat_interval_ *
-                     raft_server::raft_limits_.leadership_limit_;
+        return params->heart_beat_interval_ *
+                 raft_server::raft_limits_.leadership_limit_;
     }
     return expiry;
 }
 
-size_t raft_server::get_not_responding_peers() {
-    // Check if quorum nodes are not responding
-    // (i.e., don't respond 20x heartbeat time long).
+std::list<ptr<peer>> raft_server::get_not_responding_peers(int expiry) {
+    std::list<ptr<peer>> rs;
+    auto cb = [&rs](const ptr<peer>& peer_ptr) {
+        rs.push_back(peer_ptr);
+    };
+    apply_to_not_responding_peers(cb);
+    return rs;
+}
+
+size_t raft_server::get_not_responding_peers_count(int expiry) {
     size_t num_not_resp_nodes = 0;
+    auto cb = [&num_not_resp_nodes](const ptr<peer>&) {
+        ++num_not_resp_nodes;
+    };
+    apply_to_not_responding_peers(cb, expiry);
+    return num_not_resp_nodes;
+}
 
+void raft_server::apply_to_not_responding_peers(
+    const std::function<void(const ptr<peer>&)>& callback, int expiry) {
+    // Check if quorum nodes are not responding
+    // (i.e., don't respond 20x heartbeat time long or expiry if sent as argument).
+    // default argument for expiry is used in case user defines leadership_expiry_.
     ptr<raft_params> params = ctx_->get_params();
-    int expiry = params->heart_beat_interval_ *
-                     raft_server::raft_limits_.response_limit_;
 
-    // Check the number of not responding peers.
+    if (expiry == 0) {
+        expiry = params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
+    }
+
+    // Check not responding peers.
     for (auto& entry: peers_) {
-        ptr<peer> p = entry.second;
+        const auto& peer_ptr = entry.second;
 
-        if (!is_regular_member(p)) continue;
+        if (!is_regular_member(peer_ptr)) continue;
 
-        int32 resp_elapsed_ms = (int32)(p->get_resp_timer_us() / 1000);
-        if ( resp_elapsed_ms > expiry ) {
-            num_not_resp_nodes++;
+        const auto resp_elapsed_ms =
+            static_cast<int32>(peer_ptr->get_resp_timer_us() / 1000);
+        if (resp_elapsed_ms > expiry) {
+            callback(peer_ptr);
         }
     }
-    return num_not_resp_nodes;
 }
 
 size_t raft_server::get_num_stale_peers() {
@@ -809,6 +830,14 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
         } else if (rpc_errs == raft_server::raft_limits_.warning_limit_) {
             p_wn("too verbose RPC error on peer (%d), "
                  "will suppress it from now", peer_id);
+            if (!pp || !pp->is_lost()) {
+                if (pp) {
+                    pp->set_lost();
+                }
+                cb_func::Param param(id_, leader_, peer_id);
+                const auto rc = ctx_->cb_func_.call(cb_func::FollowerLost, &param);
+                assert(rc == cb_func::ReturnCode::Ok);
+            }
         }
 
         if (pp && pp->is_leave_flag_set()) {
@@ -845,6 +874,7 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
                 p_wn("recovered from RPC failure from peer %d, %d errors",
                      resp->get_src(), rpc_errs);
             }
+            pp->set_recovered();
             pp->reset_rpc_errs();
             pp->reset_resp_timer();
         }
@@ -1024,6 +1054,7 @@ void raft_server::become_leader() {
 
             pp->set_next_log_idx(log_store_->next_slot());
             enable_hb_for_peer(*pp);
+            pp->set_recovered();
         }
 
         // If there are uncommitted logs, search if conf log exists.
@@ -1098,12 +1129,16 @@ bool raft_server::check_leadership_validity() {
     // Check if quorum is not responding.
     int32 num_voting_members = get_num_voting_members();
 
+
     int leadership_expiry = get_leadership_expiry();
-    int32 nr_peers = (int32)get_not_responding_peers();
-    if (leadership_expiry < 0) {
-        // Negative expiry: leadership will never expire.
-        nr_peers = 0;
+
+    int32 nr_peers{0};
+
+    // Negative expiry: leadership will never expire.
+    if (leadership_expiry >= 0) {
+        nr_peers = (int32)get_not_responding_peers_count(leadership_expiry);
     }
+
     int32 min_quorum_size = get_quorum_for_commit() + 1;
     if ( (num_voting_members - nr_peers) < min_quorum_size ) {
         p_er("%d nodes (out of %d, %zu including learners) are not "
@@ -1115,6 +1150,18 @@ bool raft_server::check_leadership_validity() {
              peers_.size() + 1,
              get_leadership_expiry(),
              min_quorum_size);
+
+        const auto nr_peers_list = get_not_responding_peers();
+        assert(nr_peers_list.size() == static_cast<std::size_t>(nr_peers));
+        for (auto& peer : nr_peers_list) {
+            if (peer->is_lost()) {
+                continue;
+            }
+            peer->set_lost();
+            cb_func::Param param(id_, leader_, peer->get_id());
+            const auto rc = ctx_->cb_func_.call(cb_func::FollowerLost, &param);
+            assert(rc == cb_func::ReturnCode::Ok);
+        }
 
         // NOTE:
         //   For a cluster where the number of members is the same
@@ -1165,7 +1212,7 @@ void raft_server::check_leadership_transfer() {
         if (peer_elem->get_matched_idx() + params->stale_log_gap_ <
                 cur_commit_idx) {
             // This peer is lagging behind.
-            p_tr("peer %d is lagging behind, %lu < %lu",
+            p_tr("peer %d is lagging behind, %" PRIu64 " < %" PRIu64,
                  s_conf.get_id(), peer_elem->get_matched_idx(),
                  cur_commit_idx);
             return;
@@ -1174,7 +1221,7 @@ void raft_server::check_leadership_transfer() {
         uint64_t last_resp_ms = peer_elem->get_resp_timer_us() / 1000;
         if (last_resp_ms > election_lower) {
             // This replica is not responding.
-            p_tr("peer %d is not responding, %lu ms ago",
+            p_tr("peer %d is not responding, %" PRIu64 " ms ago",
                  s_conf.get_id(), last_resp_ms);
             return;
         }
@@ -1596,7 +1643,7 @@ ulong raft_server::term_for_log(ulong log_idx) {
         }
         p_lv(log_lv, "log_store_->start_index() %" PRIu64, log_store_->start_index());
         //ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
-        //::exit(-1);
+        //_sys_exit(-1);
         return 0L;
     }
 
