@@ -25,6 +25,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "error_code.hxx"
 #include "event_awaiter.hxx"
+#include "exit_handler.hxx"
 #include "handle_custom_notification.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
@@ -162,7 +163,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
          chk_timer.timeout_and_reset() ) {
         // If auto adjust mode is on for 2-node cluster, and
         // the follower is not responding, adjust the quorum.
-        size_t num_not_responding_peers = get_not_responding_peers();
+        size_t num_not_responding_peers = get_not_responding_peers_count();
         size_t cur_quorum_size = get_quorum_for_commit();
         size_t num_stale_peers = get_num_stale_peers();
         if (cur_quorum_size >= 1) {
@@ -406,7 +407,7 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
         p_er( "Peer's lastLogIndex is too large %" PRIu64 " v.s. %" PRIu64 ", ",
               last_log_idx, cur_nxt_idx );
         ctx_->state_mgr_->system_exit(raft_err::N8_peer_last_log_idx_too_large);
-        ::exit(-1);
+        _sys_exit(-1);
         return ptr<req_msg>();
         // LCOV_EXCL_STOP
     }
@@ -592,9 +593,21 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
             become_follower();
         } else if (role_ == srv_role::leader) {
             p_wn( "Receive AppendEntriesRequest from another leader (%d) "
-                  "with same term, there must be a bug. Ignore it instead of exit.",
+                  "with same term, there must be a bug. Invoking the callback.",
                   req.get_src() );
-            return nullptr;
+
+            cb_func::Param param(id_, leader_, -1, &req);
+            cb_func::ReqResp req_resp;
+            req_resp.req = &req;
+
+            ctx_->cb_func_.call(cb_func::ReceivedMisbehavingMessage, &param);
+            if (!req_resp.resp.get()) {
+                p_wn("callback function didn't return response, ignore this request");
+            } else {
+                p_wn("callback function returned response, send it back");
+            }
+            return req_resp.resp;
+
         } else {
             update_target_priority();
             // Modified by JungSang Ahn, Mar 28 2018:
@@ -1210,7 +1223,7 @@ ulong raft_server::get_expected_committed_log_idx() {
 
     size_t quorum_idx = get_quorum_for_commit();
     if (ctx_->get_params()->use_full_consensus_among_healthy_members_) {
-        size_t not_responding_peers = get_not_responding_peers();
+        size_t not_responding_peers = get_not_responding_peers_count();
         if (not_responding_peers < voting_members - quorum_idx) {
             // If full consensus option is on, commit should be
             // agreed by all healthy members, and the number of

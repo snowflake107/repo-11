@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # pin@v2
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # pin@v2
 
       - name: Fix kernel mmap rnd bits
         # Asan in llvm 14 provided in ubuntu 22.04 is incompatible with
@@ -52,7 +52,7 @@ jobs:
         run: ./github_action_build.sh
 
       - name: Code Coverage Metrics
-        uses: codecov/codecov-action@54bcd8715eee62d40e33596ef5e8f0f48dbbccab # pin@v3
+        uses: codecov/codecov-action@e28ff129e5465c2c0dcc6f003fc735cb6ae0c673 # pin@v3
         with:
           verbose: true
           files: ./build/raft_cov.info.cleaned

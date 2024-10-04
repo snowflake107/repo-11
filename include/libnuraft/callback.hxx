@@ -18,6 +18,9 @@ limitations under the License.
 #ifndef _CALLBACK_H_
 #define _CALLBACK_H_
 
+#include "req_msg.hxx"
+#include "resp_msg.hxx"
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -233,6 +236,26 @@ public:
          * ctx: pointer to the ptr<log_entry>
          */
         PreAppendLogFollower = 31,
+
+        /**
+         * When a peer RPC errors count exceeds raft_server::limits.warning_limit_, or
+         * a peer doesn't respond for a long time (raft_params::leadership_expiry_),
+         * the peer is considered lost.
+         * ctx: null.
+         */
+        FollowerLost = 32,
+
+        /**
+         * When the server receives a misbehaving message from a peer,
+         * the callback has the ability to either ignore the message
+         * or respond normally by adjusting ReqResp.resp as indicated by ctx.
+         *
+         * Furthermore, the callback can opt to terminate
+         * if the situation is deemed critical.
+         *
+         * ctx: pointer to `ReqResp` instance.
+         */
+        ReceivedMisbehavingMessage = 33,
     };
 
     struct Param {
@@ -249,6 +272,12 @@ public:
         int32_t leaderId;
         int32_t peerId;
         void* ctx;
+    };
+
+    struct ReqResp {
+        ReqResp() : req(nullptr), resp(nullptr) {}
+        req_msg* req;
+        ptr<resp_msg> resp;
     };
 
     enum ReturnCode {
