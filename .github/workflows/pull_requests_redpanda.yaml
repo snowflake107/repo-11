@@ -1029,7 +1029,7 @@ jobs:
         '
     - continue-on-error: true
       name: Set up Helm
-      uses: azure/setup-helm@v3
+      uses: azure/setup-helm@v4
       with:
         version: v3.11.1
     - continue-on-error: true
@@ -1400,7 +1400,7 @@ jobs:
       run: .github/check-ci-files.sh charts/redpanda/ci
     - continue-on-error: true
       name: Set up Helm
-      uses: azure/setup-helm@v3
+      uses: azure/setup-helm@v4
       with:
         version: v3.12.2
     - continue-on-error: true
