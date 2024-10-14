@@ -284,7 +284,7 @@ jobs:
         version: v3.12.2
     - continue-on-error: true
       name: Set up chart-testing
-      uses: joejulian/chart-testing-action@9f27771144b6debb69e1f85d5f5a3eae8485d057
+      uses: joejulian/chart-testing-action@e8788873172cb653a90ca2e819d79d65a66d4e76
     - continue-on-error: true
       name: Create kind cluster
       uses: helm/kind-action@dda0770415bac9fc20092cacbc54aa298604d140
