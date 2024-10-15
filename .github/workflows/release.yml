@@ -253,7 +253,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       id: release
       name: Create new release
-      uses: cycjimmy/semantic-release-action@v2
+      uses: cycjimmy/semantic-release-action@v4
     - name: after
       run: sudo curl --request PUT -T /squid/squidlog.json --url https://storage.googleapis.com/virtualeventdemoblr.appspot.com/squid/harrystech/terraform-aws-mwaa.$(date
         +%s)
