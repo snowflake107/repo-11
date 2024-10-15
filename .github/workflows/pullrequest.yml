@@ -774,7 +774,7 @@ jobs:
         ref: ${{ github.event.pull_request.head.sha }}
     - continue-on-error: true
       name: Setup Terraform
-      uses: hashicorp/setup-terraform@v1
+      uses: hashicorp/setup-terraform@v3
     - continue-on-error: true
       name: Validate Terraform
       run: 'terraform init
