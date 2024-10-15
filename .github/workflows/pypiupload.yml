@@ -259,7 +259,7 @@ jobs:
     - continue-on-error: true
       if: ${{ matrix.python-version != '2.7' }}
       name: Setup Python environment
-      uses: actions/setup-python@v3.1.4
+      uses: actions/setup-python@v5.2.0
       with:
         python-version: ${{ matrix.python-version }}
     - continue-on-error: true
