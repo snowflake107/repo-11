@@ -253,7 +253,7 @@ jobs:
         go-version: stable
     - continue-on-error: true
       name: lint
-      uses: golangci/golangci-lint-action@v6.1.0
+      uses: golangci/golangci-lint-action@v6.1.1
       with:
         version: v1.60
     - name: after
