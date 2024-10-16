@@ -283,7 +283,7 @@ jobs:
     - continue-on-error: true
       if: always()
       name: Archive test reports
-      uses: actions/upload-artifact@v1
+      uses: actions/upload-artifact@v4
       with:
         name: test-reports
         path: /tmp/test-reports
