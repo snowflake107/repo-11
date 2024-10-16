@@ -250,7 +250,7 @@ jobs:
         ref: ${{ github.ref }}
     - continue-on-error: true
       name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: 16
     - continue-on-error: true
