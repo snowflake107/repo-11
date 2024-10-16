@@ -16,8 +16,8 @@ dependencies {
   implementation("org.hypertrace.core.grpcutils:grpc-context-utils:0.6.2")
   implementation("io.reactivex.rxjava3:rxjava:3.0.11")
 
-  annotationProcessor("org.projectlombok:lombok:1.18.20")
-  compileOnly("org.projectlombok:lombok:1.18.20")
+  annotationProcessor("org.projectlombok:lombok:1.18.34")
+  compileOnly("org.projectlombok:lombok:1.18.34")
 
   constraints {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.13.1") {
