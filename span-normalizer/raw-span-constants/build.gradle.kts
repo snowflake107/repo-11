@@ -58,7 +58,7 @@ sourceSets {
 
 dependencies {
   api("com.google.protobuf:protobuf-java-util:3.17.3")
-  implementation("org.slf4j:slf4j-api:1.7.30")
+  implementation("org.slf4j:slf4j-api:2.0.16")
   constraints {
     implementation("com.google.code.gson:gson:2.8.9") {
       because("https://snyk.io/vuln/SNYK-JAVA-COMGOOGLECODEGSON-1730327")

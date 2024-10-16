@@ -65,7 +65,7 @@ dependencies {
   implementation("org.apache.httpcomponents:httpclient:4.5.13")
 
   // Logging
-  implementation("org.slf4j:slf4j-api:1.7.30")
+  implementation("org.slf4j:slf4j-api:2.0.16")
   runtimeOnly("org.apache.logging.log4j:log4j-slf4j-impl:2.17.1")
 
   testImplementation("org.junit.jupiter:junit-jupiter:5.7.1")

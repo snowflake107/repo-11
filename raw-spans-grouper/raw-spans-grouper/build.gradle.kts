@@ -47,7 +47,7 @@ dependencies {
     implementation("com.google.guava:guava:30.1.1-jre")
 
     // Logging
-    implementation("org.slf4j:slf4j-api:1.7.30")
+    implementation("org.slf4j:slf4j-api:2.0.16")
     runtimeOnly("org.apache.logging.log4j:log4j-slf4j-impl:2.17.1")
 
     constraints {
