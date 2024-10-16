@@ -5495,7 +5495,7 @@ decode-uri-component@^0.2.0, decode-uri-component@^0.2.2:
   resolved "https://registry.yarnpkg.com/decode-uri-component/-/decode-uri-component-0.2.2.tgz#e69dbe25d37941171dd540e024c444cd5188e1e9"
   integrity sha512-FqUYQ+8o158GyGTrMFJms9qh3CqTKvAqgqsTnkLI8sKu0028orqBhxNMFkFen0zGyg6epACD32pjVk58ngIErQ==
 
-decorator-transforms@^1.1.0:
+decorator-transforms@^1.0.1, decorator-transforms@^1.1.0:
   version "1.2.1"
   resolved "https://registry.yarnpkg.com/decorator-transforms/-/decorator-transforms-1.2.1.tgz#d72e39b95c9e3d63465f82b148d021919e9d198f"
   integrity sha512-UUtmyfdlHvYoX3VSG1w5rbvBQ2r5TX1JsE4hmKU9snleFymadA3VACjl6SRfi9YgBCSjBbfQvR1bs9PRW9yBKw==
@@ -6443,19 +6443,15 @@ ember-composable-helpers@^5.0.0:
     ember-cli-htmlbars "^6.2.0"
     ember-compatibility-helpers "^1.2.0"
 
-ember-concurrency@^2.2.1:
-  version "2.3.7"
-  resolved "https://registry.yarnpkg.com/ember-concurrency/-/ember-concurrency-2.3.7.tgz#52d786e37704b9054da1952638797e23714ec0e1"
-  integrity sha512-sz6sTIXN/CuLb5wdpauFa+rWXuvXXSnSHS4kuNzU5GSMDX1pLBWSuovoUk61FUe6CYRqBmT1/UushObwBGickQ==
+ember-concurrency@^4.0.2:
+  version "4.0.2"
+  resolved "https://registry.yarnpkg.com/ember-concurrency/-/ember-concurrency-4.0.2.tgz#fddf23ceaa25088e1221883622ddf8aac2b305d9"
+  integrity sha512-enmStRE8bHIeF/kPZoDZlzP9YINN7H8l3Myk1sVkqo235ph0Vjee37AGCw44eRq6cBRvcdQmb5K3pkzVY7A6WA==
   dependencies:
     "@babel/helper-plugin-utils" "^7.12.13"
     "@babel/types" "^7.12.13"
-    "@glimmer/tracking" "^1.0.4"
-    ember-cli-babel "^7.26.11"
-    ember-cli-babel-plugin-helpers "^1.1.1"
-    ember-cli-htmlbars "^5.7.1"
-    ember-compatibility-helpers "^1.2.0"
-    ember-destroyable-polyfill "^2.0.2"
+    "@embroider/addon-shim" "^1.8.7"
+    decorator-transforms "^1.0.1"
 
 ember-copy@2.0.1, ember-copy@^2.0.1:
   version "2.0.1"
@@ -6508,7 +6504,7 @@ ember-decorators@^6.1.1:
     "@ember-decorators/object" "^6.1.1"
     ember-cli-babel "^7.7.3"
 
-ember-destroyable-polyfill@^2.0.1, ember-destroyable-polyfill@^2.0.2, ember-destroyable-polyfill@^2.0.3:
+ember-destroyable-polyfill@^2.0.1, ember-destroyable-polyfill@^2.0.3:
   version "2.0.3"
   resolved "https://registry.yarnpkg.com/ember-destroyable-polyfill/-/ember-destroyable-polyfill-2.0.3.tgz#1673ed66609a82268ef270a7d917ebd3647f11e1"
   integrity sha512-TovtNqCumzyAiW0/OisSkkVK93xnVF4NRU6+FN0ubpfwEOpRrmM2RqDwXI6YAChCgSHON1cz0DfQStpA1Gjuuw==
