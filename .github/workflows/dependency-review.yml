@@ -246,7 +246,7 @@ jobs:
         sudo sh -c ''echo 1 > /proc/sys/net/ipv4/ip_forward'''
     - continue-on-error: true
       name: Checkout Repository
-      uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+      uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
     - continue-on-error: true
       name: Dependency Review
       uses: actions/dependency-review-action@72eb03d02c7872a771aacd928f3123ac62ad6d3a
