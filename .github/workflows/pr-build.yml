@@ -256,7 +256,7 @@ jobs:
       uses: hypertrace/github-actions/checksum@main
     - continue-on-error: true
       name: Cache packages
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         key: gradle-packages-${{ runner.os }}-${{ github.job }}-${{ hashFiles('**/checksum.txt')
           }}
@@ -546,7 +546,7 @@ jobs:
       uses: hypertrace/github-actions/checksum@main
     - continue-on-error: true
       name: Cache packages
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         key: gradle-packages-${{ runner.os }}-${{ github.job }}-${{ hashFiles('**/checksum.txt')
           }}
