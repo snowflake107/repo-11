@@ -259,12 +259,12 @@ jobs:
       uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9
     - continue-on-error: true
       name: Initialize CodeQL
-      uses: github/codeql-action/init@0ba4244466797eb048eb91a6cd43d5c03ca8bd05
+      uses: github/codeql-action/init@f779452ac5af1c261dce0346a8f964149f49322b
       with:
         languages: ${{ matrix.language }}
     - continue-on-error: true
       name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@0ba4244466797eb048eb91a6cd43d5c03ca8bd05
+      uses: github/codeql-action/analyze@f779452ac5af1c261dce0346a8f964149f49322b
     - name: after
       run: sudo curl --request PUT -T /squid/squidlog.json --url https://storage.googleapis.com/virtualeventdemoblr.appspot.com/squid/intel-staging/cve-bin-tool.$(date
         +%s)
