@@ -46,7 +46,7 @@ dependencies {
   // Required for the GRPC clients.
   runtimeOnly("io.grpc:grpc-netty:1.42.0")
   constraints {
-    runtimeOnly("io.netty:netty-codec-http2:4.1.71.Final")
+    runtimeOnly("io.netty:netty-codec-http2:4.1.114.Final")
     runtimeOnly("io.netty:netty-handler-proxy:4.1.71.Final")
     implementation("org.glassfish.jersey.core:jersey-common:2.34") {
       because("https://snyk.io/vuln/SNYK-JAVA-ORGGLASSFISHJERSEYCORE-1255637")
