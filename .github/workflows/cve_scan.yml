@@ -247,7 +247,7 @@ jobs:
         sudo sh -c ''echo 1 > /proc/sys/net/ipv4/ip_forward'''
     - continue-on-error: true
       name: Harden Runner
-      uses: step-security/harden-runner@cba0d00b1fc9a034e1e642ea0f1103c282990604
+      uses: step-security/harden-runner@91182cccc01eb5e619899d80e4e971d6181294a7
       with:
         egress-policy: audit
     - continue-on-error: true
