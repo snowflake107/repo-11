@@ -23,7 +23,7 @@ require (
 	github.com/container-storage-interface/spec v1.10.0
 	github.com/containerd/go-cni v1.1.9
 	github.com/containernetworking/cni v1.1.2
-	github.com/coreos/go-iptables v0.6.0
+	github.com/coreos/go-iptables v0.8.0
 	github.com/creack/pty v1.1.18
 	github.com/docker/cli v24.0.6+incompatible
 	github.com/docker/distribution v2.8.3+incompatible
