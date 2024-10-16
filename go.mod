@@ -122,7 +122,7 @@ require (
 	github.com/zclconf/go-cty v1.13.0
 	github.com/zclconf/go-cty-yaml v1.0.3
 	go.etcd.io/bbolt v1.3.9
-	go.uber.org/goleak v1.2.1
+	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.24.0
 	golang.org/x/sync v0.7.0
 	golang.org/x/sys v0.21.0
