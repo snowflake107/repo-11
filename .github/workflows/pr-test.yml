@@ -271,7 +271,7 @@ jobs:
         args: jacocoTestReport
     - continue-on-error: true
       name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v2
+      uses: codecov/codecov-action@v4
       with:
         flags: unit
         name: unit test reports
