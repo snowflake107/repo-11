@@ -59,7 +59,7 @@ dependencies {
   api("com.google.api.grpc:proto-google-common-protos:2.1.0")
   api("org.apache.avro:avro:1.10.2")
   constraints {
-    api("org.apache.commons:commons-compress:1.21") {
+    api("org.apache.commons:commons-compress:1.27.1") {
       because("Multiple vulnerabilities in avro-declared version")
     }
     implementation("com.fasterxml.jackson.core:jackson-databind:2.13.1") {
