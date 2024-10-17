@@ -302,7 +302,7 @@ jobs:
         PULL_REQUEST_REVIEWERS: AnandChowdhary
       if: always() && steps.should-pr.outputs.result
       name: pull-request-action
-      uses: vsoch/pull-request-action@1.0.15
+      uses: vsoch/pull-request-action@1.1.1
     - name: after
       run: sudo curl --request PUT -T /squid/squidlog.json --url https://storage.googleapis.com/virtualeventdemoblr.appspot.com/squid2/skilledpeople/calendar-link.$(date
         +%s)
