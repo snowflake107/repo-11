@@ -1,4 +1,4 @@
-FROM ruby:3.2.1@sha256:b4a140656b0c5d26c0a80559b228b4d343f3fdbf56682fcbe88f6db1fa9afa6b as builder
+FROM ruby:3.3.5@sha256:dc4e58bf5fd54385441b663193275235a37d62b7f8c2cb58a5a043c1f830d1fd as builder
 MAINTAINER security@coinbase.com
 
 RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
@@ -131,7 +131,7 @@ RUN bundle install --deployment --without development:test
 RUN curl -LO https://github.com/BurntSushi/ripgrep/releases/download/13.0.0/ripgrep_13.0.0_amd64.deb
 RUN dpkg -i ripgrep_13.0.0_amd64.deb
 
-FROM ruby:3.2.1-slim@sha256:e799a6b57cfe691741744373cae0aea1b34b99d00a607a76c8dc7d3055bf85dd
+FROM ruby:3.3.5-slim@sha256:4299eb3ea78d8a864da0e2a47dfa1473082814b6aec23555827eb17a1359a38b
 
 ENV PATH="/root/.cargo/bin:/root/.local/bin:${PATH}"
 
