@@ -256,7 +256,7 @@ jobs:
         UPDATE_LABELS: merge
         UPDATE_METHOD: merge
       name: Automerge
-      uses: pascalgn/automerge-action@v0.13.1
+      uses: pascalgn/automerge-action@v0.16.4
     - continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.GH_PAT }}
